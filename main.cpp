@@ -54,6 +54,10 @@ bool SteamController_Open(SteamControllerInfos* controller){
         cout<<"Found Steam Dongle, will attempt to use the first Steam Controller"<<endl;
         controller->dev_handle = dev_handle;
         controller->interfaceNum = 1;
+    } else if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1205)) != NULL){ // Steam Deck
+        cout<<"Found Steam Deck"<<endl;
+        controller->dev_handle = dev_handle;
+        controller->interfaceNum = 2;
     }
     else{
         cout<<"No device found"<<endl;
@@ -337,7 +341,7 @@ void abortPlaying(int){
 
 int main(int argc, char** argv)
 {
-    cout <<"Steam Controller Singer by Pila"<<endl;
+    cout <<"Steam Controller Singer by Pila, Deck support by Crazy"<<endl;
 
     ParamsStruct params;
     params.intervalUSec = DEFAULT_INTERVAL_USEC;
