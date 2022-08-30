@@ -7,7 +7,7 @@ I gotta say, I'm no expert and barely know how this thing works, but I hope to a
 ## How To
 
 1. Turn on your Steam Controller or Steam Deck
-2. Drag the midi file onto steamcontrollersinger executable
+2. Drag the midi file onto steam-haptics-singer executable
 3. When prompted, press ENTER
 4. Enjoy!
 
