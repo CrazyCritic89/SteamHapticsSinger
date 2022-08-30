@@ -1,22 +1,22 @@
-# Steam Controller Singer
+# Steam Haptics Singer
 
-This project is a fork of [Pila's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger) including a dirty fix to make the Steam Controller sing again.
+This project is a fork of [Roboron3042's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger) which is a fork of [Pila's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger). It attempts to add Deck compatibility but is, at the moment, not that good.
 
-**Note: Steam Controller Singer currently only works on GNU/Linux, and this fork was created to address a GNU/Linux-only issue. Therefore, no Microsoft Windows executable is provided (if you want one, go to the original source), and no Microsoft Windows related issues will be accepted.**
+I gotta say, I'm no expert and barely know how this thing works, but I hope to actually make some improvements if possible :).
 
-## HOW TO
+## How To
 
-1. Turn on your Steam Controller
+1. Turn on your Steam Controller or Steam Deck
 2. Drag the midi file onto steamcontrollersinger executable
 3. When prompted, press ENTER
 4. Enjoy!
 
 ### Where can I find midi songs?
 
-You can find midi songs ready to be played with Steam Controller Singer in my [Personal Collection](https://mega.nz/#F!BWpEWKzB!r7WPw5bZ_domN4pk-FJsjg) (I'll keep updating it with more songs). You can also download midi songs from various websites such [musescore.com](https://musescore.com/), but they may or may not be ready to be played with Steam Controller Singer (see Midi files tips in that case).
+Songs ready to play can be found in the original guy's [personal collection](https://mega.nz/#F!BWpEWKzB!r7WPw5bZ_domN4pk-FJsjg) (as he called it). Otherwise, you can just try a MIDI and see what happens (most of the time it won't work well).
 
 ### Usage from command prompt:
-	steamcontrollersinger [-r][-l DEBUG_LEVEL] [-i INTERVAL] [-c RECLAIM_PERIOD] MIDI_FILE
+	steam-haptics-singer [-r][-l DEBUG_LEVEL] [-i INTERVAL] [-c RECLAIM_PERIOD] MIDI_FILE
 
 	-i INTERVAL argument to choose player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point goidn lower won't improve any more. Default value is 10000
 
@@ -28,7 +28,7 @@ You can find midi songs ready to be played with Steam Controller Singer in my [P
 
 ### Midi files tips:
 
-Midi files may need to be edited with a software such [MidiEditor](https://www.midieditor.org/) to be correctly played with Steam Controller Singer following the next tips:
+Midi files may need to be edited with a software such as [MidiEditor](https://www.midieditor.org/) to be correctly played with Steam Haptics Singer following the next tips:
 
 * Notes from midi channel 0 are played on right haptic
 * Notes from midi channel 1 are played on left haptic
@@ -36,6 +36,9 @@ Midi files may need to be edited with a software such [MidiEditor](https://www.m
 * **Avoid multiple notes active at the same time on the same channel**, since haptic actuators can only play one note at the time.
 
 ## CHANGELOG
+
+[My V1.9 Build :> (EXCLUSIVE)]
+* Badly added Deck support. No improvements.
 
 [V1.8]
 * User can now define the reclaim period with -c option.
