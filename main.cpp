@@ -353,7 +353,7 @@ int main(int argc, char** argv)
 
     //Parse arguments
     if(!parseArguments(argc, argv, &params)){
-        cout << "Usage : steamcontrollersinger [-r][-lDEBUG_LEVEL] [-iINTERVAL] [-cRECLAIM_PERIOD] MIDI_FILE" << endl;
+        cout << "Usage : steam-haptics-singer [-r][-lDEBUG_LEVEL] [-iINTERVAL] [-cRECLAIM_PERIOD] MIDI_FILE" << endl;
         return 1;
     }
 
