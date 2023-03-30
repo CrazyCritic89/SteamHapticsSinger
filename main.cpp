@@ -12,11 +12,11 @@
 #include "midifile/midifile.h"
 
 #define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 495483.0
-#define CHANNEL_COUNT                       2
-#define DEFAULT_INTERVAL_USEC               10000
+#define CHANNEL_COUNT					   2
+#define DEFAULT_INTERVAL_USEC			   10000
 
-#define DURATION_MAX        -1
-#define NOTE_STOP           -1
+#define DURATION_MAX		-1
+#define NOTE_STOP		   -1
 
 #define DEFAULT_RECLAIM_PERIOD 280
 
@@ -28,138 +28,138 @@ double midiFrequency[128]  = {0, 8.66196, 9.17702, 9.72272, 10.3009, 10.9134, 11
 
 
 struct ParamsStruct{
-    const char* midiSong;
-    unsigned int intervalUSec;
-    int libusbDebugLevel;
-    bool repeatSong;
-    int reclaimPeriod;
-    signed char leftGain;
-    signed char rightGain;
+	const char* midiSong;
+	unsigned int intervalUSec;
+	int libusbDebugLevel;
+	bool repeatSong;
+	int reclaimPeriod;
+	signed char leftGain;
+	signed char rightGain;
 };
 
 struct SteamControllerInfos{
-    libusb_device_handle* dev_handle;
-    int interfaceNum;
+	libusb_device_handle* dev_handle;
+	int interfaceNum;
 };
 
 SteamControllerInfos steamController1;
 bool isDeck = false;
 
 bool SteamController_Open(SteamControllerInfos* controller){
-    if(!controller)
-        return false;
+	if(!controller)
+		return false;
 
-    libusb_device_handle* dev_handle;
-    //Open Steam Controller device
-    if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1102)) != NULL){ // Wired Steam Controller
-        cout<<"Found wired Steam Controller"<<endl;
-        controller->dev_handle = dev_handle;
-        controller->interfaceNum = 2;
-    }
-    else if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1142)) != NULL){ // Steam Controller dongle
-        cout<<"Found Steam Dongle, will attempt to use the first Steam Controller"<<endl;
-        controller->dev_handle = dev_handle;
-        controller->interfaceNum = 1;
-    } else if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1205)) != NULL){ // Steam Deck
-        cout<<"Found Steam Deck"<<endl;
-        controller->dev_handle = dev_handle;
-        controller->interfaceNum = 2;
+	libusb_device_handle* dev_handle;
+	//Open Steam Controller device
+	if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1102)) != NULL){ // Wired Steam Controller
+		cout<<"Found wired Steam Controller"<<endl;
+		controller->dev_handle = dev_handle;
+		controller->interfaceNum = 2;
+	}
+	else if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1142)) != NULL){ // Steam Controller dongle
+		cout<<"Found Steam Dongle, will attempt to use the first Steam Controller"<<endl;
+		controller->dev_handle = dev_handle;
+		controller->interfaceNum = 1;
+	} else if((dev_handle = libusb_open_device_with_vid_pid(NULL, 0x28DE, 0x1205)) != NULL){ // Steam Deck
+		cout<<"Found Steam Deck"<<endl;
+		controller->dev_handle = dev_handle;
+		controller->interfaceNum = 2;
 	isDeck = true;
-    }
-    else{
-        cout<<"No device found"<<endl;
-        return false;
-    }
+	}
+	else{
+		cout<<"No device found"<<endl;
+		return false;
+	}
 
-    //On Linux, automatically detach and reattach kernel module
-    libusb_set_auto_detach_kernel_driver(controller->dev_handle,1);
-    
-    return true;
+	//On Linux, automatically detach and reattach kernel module
+	libusb_set_auto_detach_kernel_driver(controller->dev_handle,1);
+	
+	return true;
 }
 
 bool SteamController_Claim(SteamControllerInfos* controller){
-    //Claim the USB interface controlling the haptic actuators
-    int r = libusb_claim_interface(controller->dev_handle,controller->interfaceNum);
-    if(r < 0) {
-        cout<<"Interface claim Error "<<r<<endl;
-        std::cin.ignore();
-        libusb_close(controller->dev_handle);
-        return false;
-    }
+	//Claim the USB interface controlling the haptic actuators
+	int r = libusb_claim_interface(controller->dev_handle,controller->interfaceNum);
+	if(r < 0) {
+		cout<<"Interface claim Error "<<r<<endl;
+		std::cin.ignore();
+		libusb_close(controller->dev_handle);
+		return false;
+	}
 
-    return true;
+	return true;
 }
 
 void SteamController_Close(SteamControllerInfos* controller){
-    int r = libusb_release_interface(controller->dev_handle,controller->interfaceNum);
-    if(r < 0) {
-        cout<<"Interface release Error "<<r<<endl;
-        std::cin.ignore();
-        return;
-    }
+	int r = libusb_release_interface(controller->dev_handle,controller->interfaceNum);
+	if(r < 0) {
+		cout<<"Interface release Error "<<r<<endl;
+		std::cin.ignore();
+		return;
+	}
 }
 
 //Steam Controller Haptic Playblack
 int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int note){
-    unsigned char dataBlob[64] = {0x8f,
-                                  0x00,
-                                  0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right
-                                  0x00, //LSB Pulse High Duration
-                                  0x00, //MSB Pulse High Duration
-                                  0x00, //LSB Pulse Low Duration
-                                  0x00, //MSB Pulse Low Duration
-                                  0x00, //LSB Pulse repeat count
-                                  0x00, //MSB Pulse repeat count
-                                  0x00, //LSB DB Gain 
-								  0x00, //MSB DB Gain; This is untested and is currently unused.
-								  0x00, 0x00, 0x00, 0x00, 0x00,
-                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	unsigned char dataBlob[64] = {0x8f,
+	                              0x00,
+	                              0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right
+	                              0x00, //LSB Pulse High Duration
+	                              0x00, //MSB Pulse High Duration
+	                              0x00, //LSB Pulse Low Duration
+	                              0x00, //MSB Pulse Low Duration
+	                              0x00, //LSB Pulse repeat count
+	                              0x00, //MSB Pulse repeat count
+	                              0x00, //LSB DB Gain 
+	                              0x00, //MSB DB Gain; This is untested and is currently unused.
+	                              0x00, 0x00, 0x00, 0x00, 0x00,
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-    double frequency = midiFrequency[note];
-    double period = 1.0 / frequency;
-    uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO;
+	double frequency = midiFrequency[note];
+	double period = 1.0 / frequency;
+	uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO;
 
-    uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
+	uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 	
-    dataBlob[2] = haptic;
-    dataBlob[3] = periodCommand % 0xff;
-    dataBlob[4] = periodCommand / 0xff;
-    dataBlob[5] = periodCommand % 0xff;
-    dataBlob[6] = periodCommand / 0xff;
-    dataBlob[7] = repeatCommand % 0xff;
-    dataBlob[8] = repeatCommand / 0xff;
+	dataBlob[2] = haptic;
+	dataBlob[3] = periodCommand % 0xff;
+	dataBlob[4] = periodCommand / 0xff;
+	dataBlob[5] = periodCommand % 0xff;
+	dataBlob[6] = periodCommand / 0xff;
+	dataBlob[7] = repeatCommand % 0xff;
+	dataBlob[8] = repeatCommand / 0xff;
 
-    int r;
-    r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
-    if(r < 0) {
-        cout<<"Command Error "<<r<< endl;
-        exit(0);
-    }
+	int r;
+	r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
+	if(r < 0) {
+		cout<<"Command Error "<<r<< endl;
+		exit(0);
+	}
 
-    return 0;
+	return 0;
 }
 
 //Steam Deck Haptic Playblack
 int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	unsigned char dataBlob[64] = {0xea, //0xEA is the Deck controller's specific haptic command
-                                  0x00,
-                                  0x00, //Trackpad select: 0x00 = Left, 0x01 = Right, 0x02 = Both
-                                  0x03, //Type, 3 is used since this is tone playblack
-                                  0x00, 
-                                  0x00, //DB Gain; Plan to add velocity support
-                                  0x00, //LSB Frequency
-                                  0x00, //MSB Frequency
-                                  0x00, //LSB Duration
-                                  0x00, //MSB Duration
-								  0x00, 0x00, 
-								  0x00, //LSB LFO Frequency
-								  0x00, //MSB LFO Frequency
-								  0x00, //LFO Depth
-								  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	                              0x00,
+	                              0x00, //Trackpad select: 0x00 = Left, 0x01 = Right, 0x02 = Both
+	                              0x03, //Type, 3 is used since this is tone playblack
+	                              0x00, 
+	                              0x00, //DB Gain; Plan to add velocity support
+	                              0x00, //LSB Frequency
+	                              0x00, //MSB Frequency
+	                              0x00, //LSB Duration
+	                              0x00, //MSB Duration
+	                              0x00, 0x00, 
+	                              0x00, //LSB LFO Frequency
+	                              0x00, //MSB LFO Frequency
+	                              0x00, //LFO Depth
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	
 	double frequency = midiFrequency[note];
 	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0xffff;
@@ -167,9 +167,9 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	dataBlob[2] = haptic;
 	dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
 	dataBlob[6] = (int)frequency % 0xff;
-    dataBlob[7] = (int)frequency / 0xff;
-    dataBlob[8] = duration % 0xff;
-    dataBlob[9] = duration / 0xff;
+	dataBlob[7] = (int)frequency / 0xff;
+	dataBlob[8] = duration % 0xff;
+	dataBlob[9] = duration / 0xff;
 
 	int r;
 	r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
@@ -182,145 +182,145 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 }
 
 float timeElapsedSince(std::chrono::steady_clock::time_point tOrigin){
-    using namespace std::chrono;
-    steady_clock::time_point tNow = steady_clock::now();
-    duration<double> time_span = duration_cast<duration<double>>(tNow - tOrigin);
-    return time_span.count();
+	using namespace std::chrono;
+	steady_clock::time_point tNow = steady_clock::now();
+	duration<double> time_span = duration_cast<duration<double>>(tNow - tOrigin);
+	return time_span.count();
 }
 
 
 void displayPlayedNotes(int channel, int8_t note){
-    static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP};
-    const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : "};
-    const char* noteBaseNameArray[12] = {" C","C#"," D","D#"," E"," F","F#"," G","G#"," A","A#"," B"};
+	static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP};
+	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : "};
+	const char* noteBaseNameArray[12] = {" C","C#"," D","D#"," E"," F","F#"," G","G#"," A","A#"," B"};
 
-    if(channel >= CHANNEL_COUNT)
-        return;
+	if(channel >= CHANNEL_COUNT)
+		return;
 
-    notePerChannel[CHANNEL_COUNT-1-channel] = note;
+	notePerChannel[CHANNEL_COUNT-1-channel] = note;
 
-    for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-        cout << textPerChannel[i];
+	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
+		cout << textPerChannel[i];
 
-        //Write empty string
-        if(notePerChannel[i] == NOTE_STOP){
-            cout << "OFF ";
-        }
-        else{
-            //Write note name
-            cout << noteBaseNameArray[notePerChannel[i]%12];
-            int octave = (notePerChannel[i]/12)-1;
-            cout << octave;
-            if(octave >= 0 ){
-                cout << " ";
-            }
-        }
-    }
+		//Write empty string
+		if(notePerChannel[i] == NOTE_STOP){
+			cout << "OFF ";
+		}
+		else{
+			//Write note name
+			cout << noteBaseNameArray[notePerChannel[i]%12];
+			int octave = (notePerChannel[i]/12)-1;
+			cout << octave;
+			if(octave >= 0 ){
+				cout << " ";
+			}
+		}
+	}
 
-    cout << "\r" ;
-    cout.flush();
+	cout << "\r" ;
+	cout.flush();
 }
 
 void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
-    MidiFile_t midifile;
+	MidiFile_t midifile;
 
-    //Open Midi File
-    midifile = MidiFile_load(params.midiSong);
+	//Open Midi File
+	midifile = MidiFile_load(params.midiSong);
 
-    if(midifile == NULL){
-        cout << "Unable to open MIDI file!" << params.midiSong << endl;
-        return;
-    }
+	if(midifile == NULL){
+		cout << "Unable to open MIDI file!" << params.midiSong << endl;
+		return;
+	}
 
-    //Check if file contains at least one midi event
-    if(MidiFile_getFirstEvent(midifile) == NULL){
-        cout << "MIDI file is empty!" << endl;
-        return;
-    }
+	//Check if file contains at least one midi event
+	if(MidiFile_getFirstEvent(midifile) == NULL){
+		cout << "MIDI file is empty!" << endl;
+		return;
+	}
 
-    //Waiting for user to press enter; YOURE WRONG, SULFURIC ACID!
-    cout << "Starting playback of " << params.midiSong  << "..." << endl;
-    sleep(1);
+	//Waiting for user to press enter; YOURE WRONG, SULFURIC ACID!
+	cout << "Starting playback of " << params.midiSong  << "..." << endl;
+	sleep(1);
 
-    //This will contains the previous events accepted for each channel
-    MidiFileEvent_t acceptedEventPerChannel[CHANNEL_COUNT] = {0};
+	//This will contains the previous events accepted for each channel
+	MidiFileEvent_t acceptedEventPerChannel[CHANNEL_COUNT] = {0};
 
-    //Get current time point, will be used to know elapsed time
-    std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point tRestart = std::chrono::steady_clock::now();
+	//Get current time point, will be used to know elapsed time
+	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
+	std::chrono::steady_clock::time_point tRestart = std::chrono::steady_clock::now();
 
-    //Iterate through events
-    MidiFileEvent_t currentEvent = MidiFile_getFirstEvent(midifile);
-    
-    while(currentEvent != NULL){
-        usleep(params.intervalUSec);
+	//Iterate through events
+	MidiFileEvent_t currentEvent = MidiFile_getFirstEvent(midifile);
+	
+	while(currentEvent != NULL){
+		usleep(params.intervalUSec);
 
-        //This will contains the events to play
-        MidiFileEvent_t eventsToPlay[CHANNEL_COUNT] = {NULL};
+		//This will contains the events to play
+		MidiFileEvent_t eventsToPlay[CHANNEL_COUNT] = {NULL};
 
-        //We now need to play all events with tick < currentTime
-        long currentTick = MidiFile_getTickFromTime(midifile,timeElapsedSince(tOrigin));
+		//We now need to play all events with tick < currentTime
+		long currentTick = MidiFile_getTickFromTime(midifile,timeElapsedSince(tOrigin));
 
-        //Every reclaimPeriod seconds, reclaim the controller to avoid timeouts
-        /*if(timeElapsedSince(tRestart) > params.reclaimPeriod){
-            tRestart = std::chrono::steady_clock::now();
-            SteamController_Close(&steamController1);
-            SteamController_Claim(&steamController1);
-        }*/
+		//Every reclaimPeriod seconds, reclaim the controller to avoid timeouts
+		/*if(timeElapsedSince(tRestart) > params.reclaimPeriod){
+			tRestart = std::chrono::steady_clock::now();
+			SteamController_Close(&steamController1);
+			SteamController_Claim(&steamController1);
+		}*/
 
-        //Iterate through all events until the current time, and selecte potential events to play
-        for( ; currentEvent != NULL && MidiFileEvent_getTick(currentEvent) < currentTick ; currentEvent = MidiFileEvent_getNextEventInFile(currentEvent)){
+		//Iterate through all events until the current time, and selecte potential events to play
+		for( ; currentEvent != NULL && MidiFileEvent_getTick(currentEvent) < currentTick ; currentEvent = MidiFileEvent_getNextEventInFile(currentEvent)){
 
-            //Only process note start events or note end events matching previous event
-            if (!MidiFileEvent_isNoteStartEvent(currentEvent) && !MidiFileEvent_isNoteEndEvent(currentEvent)) continue;
+			//Only process note start events or note end events matching previous event
+			if (!MidiFileEvent_isNoteStartEvent(currentEvent) && !MidiFileEvent_isNoteEndEvent(currentEvent)) continue;
 
-            //Get channel event
-            int eventChannel = MidiFileVoiceEvent_getChannel(currentEvent);
+			//Get channel event
+			int eventChannel = MidiFileVoiceEvent_getChannel(currentEvent);
 
-            //If channel is other than 0 or 1, skip this event, we cannot play it with only 1 steam controller
-            if(eventChannel < 0 || !(eventChannel < CHANNEL_COUNT)) continue;
+			//If channel is other than 0 or 1, skip this event, we cannot play it with only 1 steam controller
+			if(eventChannel < 0 || !(eventChannel < CHANNEL_COUNT)) continue;
 
-            //If event is note off and does not match previous played event, skip it
-            if(MidiFileEvent_isNoteEndEvent(currentEvent)){
-                MidiFileEvent_t previousEvent = acceptedEventPerChannel[eventChannel];
+			//If event is note off and does not match previous played event, skip it
+			if(MidiFileEvent_isNoteEndEvent(currentEvent)){
+				MidiFileEvent_t previousEvent = acceptedEventPerChannel[eventChannel];
 
-                //Skip if current event is not ending previous event,
-                // or if they share the same tick ( end event after start evetn on same tick )
-                if(MidiFileNoteStartEvent_getNote(previousEvent) != MidiFileNoteEndEvent_getNote(currentEvent)
-                ||(MidiFileEvent_getTick(currentEvent) == MidiFileEvent_getTick(previousEvent)))
-                    continue;
-            }
+				//Skip if current event is not ending previous event,
+				// or if they share the same tick ( end event after start evetn on same tick )
+				if(MidiFileNoteStartEvent_getNote(previousEvent) != MidiFileNoteEndEvent_getNote(currentEvent)
+				||(MidiFileEvent_getTick(currentEvent) == MidiFileEvent_getTick(previousEvent)))
+					continue;
+			}
 
-            //If we arrive here, this event is accepted
-            eventsToPlay[eventChannel] = currentEvent;
-            acceptedEventPerChannel[eventChannel]=currentEvent;
-        }
+			//If we arrive here, this event is accepted
+			eventsToPlay[eventChannel] = currentEvent;
+			acceptedEventPerChannel[eventChannel]=currentEvent;
+		}
 
-        //Now play the last events found
-        for(int currentChannel = 0 ; currentChannel < CHANNEL_COUNT ; currentChannel++){
-            MidiFileEvent_t selectedEvent = eventsToPlay[currentChannel];
+		//Now play the last events found
+		for(int currentChannel = 0 ; currentChannel < CHANNEL_COUNT ; currentChannel++){
+			MidiFileEvent_t selectedEvent = eventsToPlay[currentChannel];
 
-            //If no note event available on the channel, skip it
-            if(!MidiFileEvent_isNoteEvent(selectedEvent)) continue;
+			//If no note event available on the channel, skip it
+			if(!MidiFileEvent_isNoteEvent(selectedEvent)) continue;
 
-            //Set note event
-            int8_t eventNote = NOTE_STOP;
-            if(MidiFileEvent_isNoteStartEvent(selectedEvent)){
-                eventNote = MidiFileNoteStartEvent_getNote(selectedEvent);
-            }
+			//Set note event
+			int8_t eventNote = NOTE_STOP;
+			if(MidiFileEvent_isNoteStartEvent(selectedEvent)){
+				eventNote = MidiFileNoteStartEvent_getNote(selectedEvent);
+			}
 
-            //Play notes
-            if (isDeck) {
+			//Play notes
+			if (isDeck) {
 				SteamDeck_PlayNote(controller,currentChannel*-1+1,eventNote); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
-	    	} else {
+			} else {
 				SteamController_PlayNote(controller,currentChannel,eventNote);
-	    	}
-            displayPlayedNotes(currentChannel,eventNote);
-        }
-    }
+			}
+			displayPlayedNotes(currentChannel,eventNote);
+		}
+	}
 
-    cout <<endl<< "Playback completed " << endl;
+	cout <<endl<< "Playback completed " << endl;
 }
 
 
@@ -328,130 +328,130 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 
 bool parseArguments(int argc, char** argv, ParamsStruct* params){
-    int c;
-    while ( (c = getopt(argc, argv, "k:j:c:l:i:r")) != -1) {
-        unsigned long int value;
-	switch(c){
+	int c;
+	while ( (c = getopt(argc, argv, "k:j:c:l:i:r")) != -1) {
+		unsigned long int value;
+		switch(c){
 		case 'k':
-	    	value = strtoul(optarg,NULL,10);
-            if(value <= 255 && value > 0){
-                params->rightGain = value;
-            }
-	    	break;
+			value = strtoul(optarg,NULL,10);
+			if(value <= 255 && value > 0){
+				params->rightGain = value;
+			}
+			break;
 		case 'j':
-	    	value = strtoul(optarg,NULL,10);
-            if(value <= 255 && value > 0){
-                params->leftGain = value;
-            }
-	    	break;
-        case 'c':
-	    	value = strtoul(optarg,NULL,10);
-            if(value <= 1000000 && value > 0){
-                params->reclaimPeriod = value;
-            }
-            break;
-        case 'l':
-	    	value = strtoul(optarg,NULL,10);
-            if(value >= LIBUSB_LOG_LEVEL_NONE && value <= LIBUSB_LOG_LEVEL_DEBUG){
-                params->libusbDebugLevel = value;
-            }
-            break;
-        case 'i':
-	    	value = strtoul(optarg,NULL,10);
-            if(value <= 1000000 && value > 0){
-                params->intervalUSec = value;
-            }
-            break;
-        case 'r':
-            params->repeatSong = true;
-            break;
-        case '?':
-            return false;
-            break;
-        default:
-            break;
-        }
-    }
-    if(optind == argc-1 ){
-        params->midiSong = argv[optind];
-        return true;
-    }
-    else{
-        return false;
-    }
+			value = strtoul(optarg,NULL,10);
+			if(value <= 255 && value > 0){
+				params->leftGain = value;
+			}
+			break;
+		case 'c':
+			value = strtoul(optarg,NULL,10);
+			if(value <= 1000000 && value > 0){
+				params->reclaimPeriod = value;
+			}
+			break;
+		case 'l':
+			value = strtoul(optarg,NULL,10);
+			if(value >= LIBUSB_LOG_LEVEL_NONE && value <= LIBUSB_LOG_LEVEL_DEBUG){
+				params->libusbDebugLevel = value;
+			}
+			break;
+		case 'i':
+			value = strtoul(optarg,NULL,10);
+			if(value <= 1000000 && value > 0){
+				params->intervalUSec = value;
+			}
+			break;
+		case 'r':
+			params->repeatSong = true;
+			break;
+		case '?':
+			return false;
+			break;
+		default:
+			break;
+		}
+	}
+	if(optind == argc-1 ){
+		params->midiSong = argv[optind];
+		return true;
+	}
+	else{
+		return false;
+	}
 }
 
 
 void abortPlaying(int){
-    for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-        if (isDeck) {
+	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
+		if (isDeck) {
 			SteamDeck_PlayNote(&steamController1,i,NOTE_STOP);
 		} else {
 			SteamController_PlayNote(&steamController1,i,NOTE_STOP);
 		}
-    }
+	}
 
-    SteamController_Close(&steamController1);
+	SteamController_Close(&steamController1);
 
-    cout << endl<< "Aborted " << endl;
-    cout.flush();
-    exit(1);
+	cout << endl<< "Aborted " << endl;
+	cout.flush();
+	exit(1);
 }
 
 int main(int argc, char** argv)
 {
-    cout <<"Steam Haptics Singer by Crazy, Steam Controller Singer by Pila"<<endl;
+	cout <<"Steam Haptics Singer by Crazy, Steam Controller Singer by Pila"<<endl;
 
-    ParamsStruct params;
-    params.intervalUSec = DEFAULT_INTERVAL_USEC;
-    params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
-    params.repeatSong = false;
-    params.midiSong = "\0";
-    params.reclaimPeriod = DEFAULT_RECLAIM_PERIOD;
-    params.leftGain = DEFAULT_GAIN;
-    params.rightGain = DEFAULT_GAIN;
-
-
-    //Parse arguments
-    if(!parseArguments(argc, argv, &params)){
-        cout << "Usage: steam-haptics-singer [-r][-l DEBUG_LEVEL] [-i INTERVAL] [-c RECLAIM_PERIOD] [-j LEFTGAIN] [-k RIGHTGAIN] MIDI_FILE" << endl;
-        return 1;
-    }
+	ParamsStruct params;
+	params.intervalUSec = DEFAULT_INTERVAL_USEC;
+	params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
+	params.repeatSong = false;
+	params.midiSong = "\0";
+	params.reclaimPeriod = DEFAULT_RECLAIM_PERIOD;
+	params.leftGain = DEFAULT_GAIN;
+	params.rightGain = DEFAULT_GAIN;
 
 
-    //Initializing LIBUSB
-    int r = libusb_init(NULL);
-    if(r < 0) {
-        cout<<"LIBUSB Init Error "<<r<<endl;
-        std::cin.ignore();
-        return 1;
-    }
-
-    libusb_set_debug(NULL, params.libusbDebugLevel);
-
-    //Gaining access to Steam Controller
-    if(!SteamController_Open(&steamController1)){
-        return 1;
-    }
-    if(!SteamController_Claim(&steamController1)){
-        return 1;
-    }
-
-    //Set mecanism to stop playing when closing process
-    signal(SIGINT, abortPlaying);
-
-    //Playing song
-    do{
-        playSong(&steamController1,params);
-    }while(params.repeatSong);
+	//Parse arguments
+	if(!parseArguments(argc, argv, &params)){
+		cout << "Usage: steam-haptics-singer [-r][-l DEBUG_LEVEL] [-i INTERVAL] [-c RECLAIM_PERIOD] [-j LEFTGAIN] [-k RIGHTGAIN] MIDI_FILE" << endl;
+		return 1;
+	}
 
 
-    //Releasing access to Steam Controller
-    SteamController_Close(&steamController1);
-    
-    libusb_close((&steamController1)->dev_handle);
+	//Initializing LIBUSB
+	int r = libusb_init(NULL);
+	if(r < 0) {
+		cout<<"LIBUSB Init Error "<<r<<endl;
+		std::cin.ignore();
+		return 1;
+	}
 
-    libusb_exit(NULL);
+	libusb_set_debug(NULL, params.libusbDebugLevel);
 
-    return 0;
+	//Gaining access to Steam Controller
+	if(!SteamController_Open(&steamController1)){
+		return 1;
+	}
+	if(!SteamController_Claim(&steamController1)){
+		return 1;
+	}
+
+	//Set mecanism to stop playing when closing process
+	signal(SIGINT, abortPlaying);
+
+	//Playing song
+	do{
+		playSong(&steamController1,params);
+	}while(params.repeatSong);
+
+
+	//Releasing access to Steam Controller
+	SteamController_Close(&steamController1);
+	
+	libusb_close((&steamController1)->dev_handle);
+
+	libusb_exit(NULL);
+
+	return 0;
 }
