@@ -162,7 +162,7 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	
 	double frequency = midiFrequency[note];
-	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0xffff;
+	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 
 	dataBlob[2] = haptic;
 	//dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
