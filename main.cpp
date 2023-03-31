@@ -165,7 +165,7 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0xffff;
 
 	dataBlob[2] = haptic;
-	dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
+	//dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
 	dataBlob[6] = (int)frequency % 0xff;
 	dataBlob[7] = (int)frequency / 0xff;
 	dataBlob[8] = duration % 0xff;
