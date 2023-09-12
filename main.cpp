@@ -312,7 +312,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 			//Play notes
 			if (isDeck) {
-				SteamDeck_PlayNote(controller,currentChannel*-1+1,eventNote); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
+				SteamDeck_PlayNote(controller,!currentChannel,eventNote); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
 			} else {
 				SteamController_PlayNote(controller,currentChannel,eventNote);
 			}
