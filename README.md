@@ -37,19 +37,19 @@ Midi files may need to be edited with a software such as [MidiEditor](https://ww
 
 ## CHANGELOG
 
-[My V1.9 Build :> (EXCLUSIVE)]
+[My v1.9 Build :> (EXCLUSIVE)]
 * Badly added Deck support. No improvements.
 
-[V1.8]
+[v1.8]
 * User can now define the reclaim period with -c option.
 
-[V1.7]
+[v1.7]
 * Fixed music stopped playing after a few seconds
 
-[V1.6]
+[v1.6]
 * Fixed major bugs in playback algorithm
 
-[V1.5]
+[v1.5]
 * Changed debug level argument from -d to -l
 * Added -r argument to enable demo mode
 * Enhanced arguments parsing
@@ -57,14 +57,14 @@ Midi files may need to be edited with a software such as [MidiEditor](https://ww
 * Updated note display
 * Now stops playing when interrupting the process ( on Ctrl+C )
 
-[V1.4]
+[v1.4]
 * Fixed a bug in MIDI librairie that would compute a null duration for notes when ON event and previous OFF event had the same timetick
 
-[V1.3]
+[v1.3]
 * Added -iINTERVAL argument
 * Added -dDEBUG_LEVEL argument 
 
-[V1.2]
+[v1.2]
 * Fixed being stuck on "Command error" when disconnecting controller while playing. Now continue playing (even if keep failing)
 * Removed the now deprecated 20ms note duration reduction
 
