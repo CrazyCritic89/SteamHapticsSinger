@@ -302,7 +302,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 			MidiFileEvent_t selectedEvent = eventsToPlay[currentChannel];
 
 			//If no note event available on the channel, skip it
-			if(!MidiFileEvent_isNoteEvent(selectedEvent)) continue;
+			if(!MidiFileEvent_isNoteStartEvent(selectedEvent) && !MidiFileEvent_isNoteEndEvent(selectedEvent)) continue;
 
 			//Set note event
 			int8_t eventNote = NOTE_STOP;
