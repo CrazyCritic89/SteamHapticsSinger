@@ -18,6 +18,7 @@ Make sure to run gadget_disable.sh when finished.
 ### Current Implementation
 
 Channels 1 and 2 are tied to the right and left trackpads respectively. Velocity is applied to gain.
+
 Channels 3 and 4 are tied to the right and left trackpads as well but use the SteamController_PlayNote function as lower notes are louder. Velocity is applied to gain, but does not account for the signed value.
 
 ### Usage from command prompt:
@@ -37,7 +38,7 @@ It's recommended to build this in a container such as [steam-runtime](https://gi
 
 If you go the steam-runtime route, make sure to use sniper as scout is outdated.
 
-For a guide:
+### For a guide:
 	git clone -b rtmidi https://github.com/CrazyCritic89/SteamHapticsSinger.git
 	cd SteamHapticsSinger
 	podman run --rm -v ./:/src -it registry.gitlab.steamos.cloud/steamrt/sniper/sdk bash
