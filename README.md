@@ -27,8 +27,6 @@ Channels 3 and 4 are tied to the right and left trackpads as well but use the St
 	-i INTERVAL argument to choose player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point goidn lower won't improve any more. Default value is 10000
 
 	-l DEBUG_LEVEL argument to choose libusb debug level. Default is 0, no debug output. max is 4, max verbosity output
-	
-	-r to enable repeat mode, which plays continously (restart the song when finished)
 
 ## Compiling
 
