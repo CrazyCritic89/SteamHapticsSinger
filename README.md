@@ -21,7 +21,7 @@ Channels 1 and 2 are tied to the right and left trackpads respectively. Velocity
 Channels 3 and 4 are tied to the right and left trackpads as well but use the SteamController_PlayNote function as lower notes are louder. Velocity is applied to gain, but does not account for the signed value.
 
 ### Usage from command prompt:
-	steam-haptics-singer [-r] [-l DEBUG_LEVEL] [-i INTERVAL]
+	steam-haptics-singer [-l DEBUG_LEVEL] [-i INTERVAL]
 
 	-i INTERVAL argument to choose player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point goidn lower won't improve any more. Default value is 10000
 

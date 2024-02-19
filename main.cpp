@@ -21,8 +21,6 @@
 #define DURATION_MAX		-1
 #define NOTE_STOP		   -1
 
-#define DEFAULT_RECLAIM_PERIOD 280
-
 #define DEFAULT_GAIN 127
 
 using namespace std;
@@ -35,7 +33,6 @@ struct ParamsStruct{
 	unsigned int intervalUSec;
 	int libusbDebugLevel;
 	bool repeatSong;
-	int reclaimPeriod;
 	signed char leftGain;
 	signed char rightGain;
 };
@@ -281,13 +278,6 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 		//We now need to play all events with tick < currentTime
 		long currentTick = MidiFile_getTickFromTime(midifile,timeElapsedSince(tOrigin));
 
-		//Every reclaimPeriod seconds, reclaim the controller to avoid timeouts
-		/*if(timeElapsedSince(tRestart) > params.reclaimPeriod){
-			tRestart = std::chrono::steady_clock::now();
-			SteamController_Close(&steamController1);
-			SteamController_Claim(&steamController1);
-		}*/
-
 		//Iterate through all events until the current time, and selecte potential events to play
 		for( ; currentEvent != NULL && MidiFileEvent_getTick(currentEvent) < currentTick ; currentEvent = MidiFileEvent_getNextEventInFile(currentEvent)){
 
@@ -473,12 +463,6 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 				params->leftGain = value;
 			}
 			break;
-		case 'c':
-			value = strtoul(optarg,NULL,10);
-			if(value <= 1000000 && value > 0){
-				params->reclaimPeriod = value;
-			}
-			break;
 		case 'l':
 			value = strtoul(optarg,NULL,10);
 			if(value >= LIBUSB_LOG_LEVEL_NONE && value <= LIBUSB_LOG_LEVEL_DEBUG){
@@ -537,14 +521,13 @@ int main(int argc, char** argv)
 	params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
 	params.repeatSong = false;
 	params.midiSong = "\0";
-	params.reclaimPeriod = DEFAULT_RECLAIM_PERIOD;
 	params.leftGain = DEFAULT_GAIN;
 	params.rightGain = DEFAULT_GAIN;
 
 
 	//Parse arguments
 	if(!parseArguments(argc, argv, &params)){
-		cout << "Usage: steam-haptics-singer [-r][-l DEBUG_LEVEL] [-i INTERVAL] [-c RECLAIM_PERIOD] [-j LEFTGAIN] [-k RIGHTGAIN] MIDI_FILE" << endl;
+		cout << "Usage: steam-haptics-singer [-l DEBUG_LEVEL] [-i INTERVAL]" << endl;
 		return 1;
 	}
 
