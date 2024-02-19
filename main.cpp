@@ -8,8 +8,11 @@
 #include <signal.h>
 #include <stdio.h>
 
-#include <libusb.h>
+#include <libusb-1.0/libusb.h>
 #include "midifile/midifile.h"
+
+#include <cstdlib>
+#include "rtmidi/RtMidi.h"
 
 #define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 495483.0
 #define CHANNEL_COUNT					   2
@@ -44,6 +47,8 @@ struct SteamControllerInfos{
 
 SteamControllerInfos steamController1;
 bool isDeck = false;
+
+int periodRatio = 515000;
 
 bool SteamController_Open(SteamControllerInfos* controller){
 	if(!controller)
@@ -100,7 +105,7 @@ void SteamController_Close(SteamControllerInfos* controller){
 }
 
 //Steam Controller Haptic Playblack
-int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int note){
+int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int note, int velocity){
 	unsigned char dataBlob[64] = {0x8f,
 	                              0x00,
 	                              0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right
@@ -119,7 +124,11 @@ int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int n
 
 	double frequency = midiFrequency[note];
 	double period = 1.0 / frequency;
-	uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO;
+	
+	int gain = ((float)velocity / 127.0) * 0xffff; //Horrible
+	//cout << gain << endl;
+	
+	uint16_t periodCommand = period * periodRatio;
 
 	uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 	
@@ -130,6 +139,14 @@ int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int n
 	dataBlob[6] = periodCommand / 0xff;
 	dataBlob[7] = repeatCommand % 0xff;
 	dataBlob[8] = repeatCommand / 0xff;
+
+	dataBlob[9] = gain % 0xff; 
+	dataBlob[10]= gain / 0xff;
+
+	//Testing period ratios
+
+	//cout << periodRatio << endl;
+	//periodRatio += 1000;
 
 	int r;
 	r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
@@ -142,7 +159,7 @@ int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int n
 }
 
 //Steam Deck Haptic Playblack
-int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
+int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note, int velocity){
 	unsigned char dataBlob[64] = {0xea, //0xEA is the Deck controller's specific haptic command
 	                              0x00,
 	                              0x00, //Trackpad select: 0x00 = Left, 0x01 = Right, 0x02 = Both
@@ -163,9 +180,11 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	
 	double frequency = midiFrequency[note];
 	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
+	signed char gain = (signed char)((((float)velocity / 127.0) * 0xff) - 0x80);
 
 	dataBlob[2] = haptic;
 	//dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
+	dataBlob[5] = (unsigned char)gain;
 	dataBlob[6] = (int)frequency % 0xff;
 	dataBlob[7] = (int)frequency / 0xff;
 	dataBlob[8] = duration % 0xff;
@@ -192,7 +211,7 @@ float timeElapsedSince(std::chrono::steady_clock::time_point tOrigin){
 void displayPlayedNotes(int channel, int8_t note){
 	static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : "};
-	const char* noteBaseNameArray[12] = {" C","C#"," D","D#"," E"," F","F#"," G","G#"," A","A#"," B"};
+	const char* noteBaseNameArray[12] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
 
 	if(channel >= CHANNEL_COUNT)
 		return;
@@ -312,9 +331,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 			//Play notes
 			if (isDeck) {
-				SteamDeck_PlayNote(controller,!currentChannel,eventNote); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
+				SteamDeck_PlayNote(controller,!currentChannel,eventNote,100); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
 			} else {
-				SteamController_PlayNote(controller,currentChannel,eventNote);
+				SteamController_PlayNote(controller,currentChannel,eventNote,0);
 			}
 			displayPlayedNotes(currentChannel,eventNote);
 		}
@@ -322,6 +341,116 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 	cout <<endl<< "Playback completed " << endl;
 }
+
+void midiCallback(double deltatime, std::vector<unsigned char>* message, void* userData) { //// TEMPORARY!!!!!! This will need to be removed, redone, and integrated into the realTime fuctnion.
+    if (message->size() >= 3) {
+        	int messageType = message->at(0) & 0xf0; // Extract the message type (Note On, Note Off, etc.)
+			int channel = message->at(0) & 0x0f; 
+        	int note = message->at(1);
+        	int velocity = message->at(2);
+
+			if((channel < 2)) {
+				
+			if (messageType == 0x90) { // Note On message
+            	//std::cout << "Note On: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				if (velocity != 0) {
+					SteamDeck_PlayNote(&steamController1,!channel,note,velocity);
+					displayPlayedNotes(channel, note);
+				} else {
+					SteamDeck_PlayNote(&steamController1,!channel,NOTE_STOP,0);
+					displayPlayedNotes(channel, NOTE_STOP);
+				}
+        	} else if (messageType == 0x80) { // Note Off message
+            	//std::cout << "Note Off: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				SteamDeck_PlayNote(&steamController1,!channel,NOTE_STOP,0);
+				displayPlayedNotes(channel, NOTE_STOP);
+			}
+
+			} else if (channel < 4) { //God awful but SteamController_PlayNote is louder on lower notes
+				
+			if (messageType == 0x90) { // Note On message
+            	//std::cout << "Note On: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				if (velocity != 0) {
+					SteamController_PlayNote(&steamController1,channel-2,note,velocity);
+					displayPlayedNotes(channel-2, note);
+				} else {
+					SteamController_PlayNote(&steamController1,channel-2,NOTE_STOP,0);
+					displayPlayedNotes(channel-2, NOTE_STOP);
+				}
+        	} else if (messageType == 0x80) { // Note Off message
+            	//std::cout << "Note Off: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				SteamController_PlayNote(&steamController1,channel-2,NOTE_STOP,0);
+				displayPlayedNotes(channel-2, NOTE_STOP);
+			}
+
+			}
+        }
+}
+
+void realTime(SteamControllerInfos* controller,const ParamsStruct params){
+	//Set up RTMIDI
+	RtMidiIn *midiin = 0;
+  	std::vector<unsigned char> message;
+
+	//RtMidiIn constructor
+	try {
+    	midiin = new RtMidiIn();
+  	}
+  	catch ( RtMidiError &error ) {
+    	error.printMessage();
+    	exit( EXIT_FAILURE );
+  	}
+
+	//Check available ports vs. specified.
+	unsigned int port = 1;
+	unsigned int nPorts = midiin->getPortCount();
+	if ( port >= nPorts ) {
+		delete midiin;
+		std::cout << "Invalid port specifier!\n";
+		exit( 0 );
+	}
+
+	//Open port
+	try {
+    	midiin->openPort( port );
+  	}
+  	catch ( RtMidiError &error ) {
+    	error.printMessage();
+    	goto cleanup;
+  	}
+
+	midiin->setCallback(midiCallback);
+
+    std::cout << "Listening to MIDI input on port: " << midiin->getPortName( port ) << std::endl;
+
+    // Enter a loop to keep the program running and capture MIDI input
+    char input;
+    std::cout << "Press Enter to exit." << std::endl;
+    std::cin.get(input);
+
+	/*done = false;
+	while ( !done ) {
+    	midiin->getMessage( &message );
+		if (message.size() >= 3) {
+        	int messageType = message.at(0) & 0xf0; // Extract the message type (Note On, Note Off, etc.)
+			int channel = message.at(0) & 0x0f; 
+        	int note = message.at(1);
+        	int velocity = message.at(2);
+			if(!(channel < CHANNEL_COUNT)) continue;
+			if (messageType == 0x90) { // Note On message
+            	std::cout << "Note On: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				SteamDeck_PlayNote(controller,!channel,note);
+        	} else if (messageType == 0x80) { // Note Off message
+            	std::cout << "Note Off: " << note << ", Velocity: " << velocity << ", Channel: " << channel << std::endl;
+				SteamDeck_PlayNote(controller,!channel,NOTE_STOP);
+			}
+        }
+		}*/
+
+	cleanup:
+  		delete midiin;
+	}
+
 
 
 
@@ -372,22 +501,24 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 			break;
 		}
 	}
-	if(optind == argc-1 ){
+	/*if(optind == argc-1 ){
 		params->midiSong = argv[optind];
 		return true;
 	}
 	else{
 		return false;
-	}
+	}*/
+	return true;
 }
 
 
 void abortPlaying(int){
+	done = true;
 	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
 		if (isDeck) {
-			SteamDeck_PlayNote(&steamController1,i,NOTE_STOP);
+			SteamDeck_PlayNote(&steamController1,i,NOTE_STOP,0);
 		} else {
-			SteamController_PlayNote(&steamController1,i,NOTE_STOP);
+			SteamController_PlayNote(&steamController1,i,NOTE_STOP,0);
 		}
 	}
 
@@ -441,10 +572,12 @@ int main(int argc, char** argv)
 	signal(SIGINT, abortPlaying);
 
 	//Playing song
-	do{
+	/*do{
 		playSong(&steamController1,params);
-	}while(params.repeatSong);
+	}while(params.repeatSong);*/
 
+	//Real time MIDI
+	realTime(&steamController1,params);
 
 	//Releasing access to Steam Controller
 	SteamController_Close(&steamController1);
