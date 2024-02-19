@@ -513,7 +513,6 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 
 
 void abortPlaying(int){
-	done = true;
 	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
 		if (isDeck) {
 			SteamDeck_PlayNote(&steamController1,i,NOTE_STOP,0);
