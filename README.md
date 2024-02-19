@@ -1,6 +1,6 @@
 # Steam Haptics Singer
 
-This project is a fork of [Roboron3042's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger) which is a fork of [Pila's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger). It attempts to add Deck compatibility but is, at the moment, not that good.
+This project is a fork of [Roboron3042's SteamControllerSinger](https://github.com/Roboron3042/SteamControllerSinger) which is a fork of [Pila's SteamControllerSinger](https://gitlab.com/Pilatomic/SteamControllerSinger). It attempts to add Deck compatibility but is, at the moment, not that good.
 
 I gotta say, I'm no expert and barely know how this thing works, but I hope to actually make some improvements if possible :).
 
