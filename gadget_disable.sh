@@ -14,7 +14,7 @@ rmdir configs/c.1/strings/0x409
 
 rmdir configs/c.1
 
-rmdir functions/ffs.mtp
+rmdir functions/midi.shs
 
 rmdir strings/0x409
 
