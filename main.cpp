@@ -30,17 +30,18 @@ struct ParamsStruct{
 	unsigned int intervalUSec;
 	int libusbDebugLevel;
 	bool repeatSong;
-	signed char leftGain;
-	signed char rightGain;
 };
 
 struct SteamControllerInfos{
 	libusb_device_handle* dev_handle;
 	int interfaceNum;
+
+	bool isDeck = false;
+	signed char leftGain;
+	signed char rightGain;
 };
 
 SteamControllerInfos steamController1;
-bool isDeck = false;
 
 bool SteamController_Open(SteamControllerInfos* controller){
 	if(!controller)
@@ -61,7 +62,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		cout<<"Found Steam Deck"<<endl;
 		controller->dev_handle = dev_handle;
 		controller->interfaceNum = 2;
-	isDeck = true;
+		controller->isDeck = true;
 	}
 	else{
 		cout<<"No device found"<<endl;
@@ -96,61 +97,19 @@ void SteamController_Close(SteamControllerInfos* controller){
 	}
 }
 
-//Steam Controller Haptic Playblack
-int SteamController_PlayNote(SteamControllerInfos* controller, int haptic, int note){
-	unsigned char dataBlob[64] = {0x8f,
+//Steam Haptics Playblack
+int SteamHaptics_PlayNote(SteamControllerInfos* controller, int haptic, int note){
+	unsigned char dataBlob[64] = {0xea, //0x8F for Steam Controller, 0xEA for Steam Deck
 	                              0x00,
-	                              0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right
-	                              0x00, //LSB Pulse High Duration
-	                              0x00, //MSB Pulse High Duration
-	                              0x00, //LSB Pulse Low Duration
-	                              0x00, //MSB Pulse Low Duration
-	                              0x00, //LSB Pulse repeat count
-	                              0x00, //MSB Pulse repeat count
-	                              0x00, //LSB DB Gain 
-	                              0x00, //MSB DB Gain; This is untested and is currently unused.
-	                              0x00, 0x00, 0x00, 0x00, 0x00,
-	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-	double frequency = midiFrequency[note];
-	double period = 1.0 / frequency;
-	uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO;
-
-	uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
-	
-	dataBlob[2] = haptic;
-	dataBlob[3] = periodCommand % 0xff;
-	dataBlob[4] = periodCommand / 0xff;
-	dataBlob[5] = periodCommand % 0xff;
-	dataBlob[6] = periodCommand / 0xff;
-	dataBlob[7] = repeatCommand % 0xff;
-	dataBlob[8] = repeatCommand / 0xff;
-
-	int r;
-	r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
-	if(r < 0) {
-		cout<<"Command Error "<<r<< endl;
-		exit(0);
-	}
-
-	return 0;
-}
-
-//Steam Deck Haptic Playblack
-int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
-	unsigned char dataBlob[64] = {0xea, //0xEA is the Deck controller's specific haptic command
-	                              0x00,
-	                              0x00, //Trackpad select: 0x00 = Left, 0x01 = Right, 0x02 = Both
-	                              0x03, //Type, 3 is used since this is tone playblack
-	                              0x00, 
-	                              0x00, //DB Gain; Plan to add velocity support
-	                              0x00, //LSB Frequency
-	                              0x00, //MSB Frequency
-	                              0x00, //LSB Duration
-	                              0x00, //MSB Duration
-	                              0x00, 0x00, 
+	                              0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right; 0x02 = Both but is only on Deck and is not used. The select is also flipped incode for Deck.
+	                              0x03, //Command Type			LSB Pulse High Duration			(What is command type? This haptic command is used for everything related to haptics, such as startup haptics. To implement them, they have a "type" selector. Type 3 is used since it corresponds to note playback.)
+	                              0x00, //						MSB Pulse High Duration
+	                              0x00, //DB Gain				LSB Pulse Low Duration							
+	                              0x00, //LSB Frequency			MSB Pulse Low Duration		
+	                              0x00, //MSB Frequency			LSB Pulse repeat count					
+	                              0x00, //LSB Duration			MSB Pulse repeat count
+	                              0x00, //MSB Duration			LSB DB Gain 
+	                              0x00, 0x00, //				MSB DB Gain 
 	                              0x00, //LSB LFO Frequency
 	                              0x00, //MSB LFO Frequency
 	                              0x00, //LFO Depth
@@ -161,12 +120,27 @@ int SteamDeck_PlayNote(SteamControllerInfos* controller, int haptic, int note){
 	double frequency = midiFrequency[note];
 	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 
-	dataBlob[2] = haptic;
-	//dataBlob[5] = (haptic == 0) ? left_gain : right_gain;
-	dataBlob[6] = (int)frequency % 0xff;
-	dataBlob[7] = (int)frequency / 0xff;
-	dataBlob[8] = duration % 0xff;
-	dataBlob[9] = duration / 0xff;
+	if(controller->isDeck) {
+		dataBlob[0] = 0xea;
+		dataBlob[2] = !haptic;
+		dataBlob[6] = (int)frequency % 0xff;
+		dataBlob[7] = (int)frequency / 0xff;
+		dataBlob[8] = duration % 0xff;
+		dataBlob[9] = duration / 0xff;
+	} else {
+		double period = 1.0 / frequency;
+		uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO; //Reminder to check if the Steam Controller tuning lines up with the Deck.
+		uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
+
+		dataBlob[0] = 0x8f;
+		dataBlob[2] = haptic;
+		dataBlob[3] = periodCommand % 0xff;
+		dataBlob[4] = periodCommand / 0xff;
+		dataBlob[5] = periodCommand % 0xff;
+		dataBlob[6] = periodCommand / 0xff;
+		dataBlob[7] = repeatCommand % 0xff;
+		dataBlob[8] = repeatCommand / 0xff;
+	}
 
 	int r;
 	r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
@@ -301,11 +275,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 			}
 
 			//Play notes
-			if (isDeck) {
-				SteamDeck_PlayNote(controller,!currentChannel,eventNote); //Why is currentChannel like this? The Deck reversed the trackpad order, and this is to accommodate for that. Plan to change when channel selecting is implemented.
-			} else {
-				SteamController_PlayNote(controller,currentChannel,eventNote);
-			}
+			SteamHaptics_PlayNote(controller,currentChannel,eventNote);
+
 			displayPlayedNotes(currentChannel,eventNote);
 		}
 	}
@@ -322,19 +293,19 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 	while ( (c = getopt(argc, argv, "k:j:c:l:i:r")) != -1) {
 		unsigned long int value;
 		switch(c){
-		case 'k':
+		/*case 'l':
 			value = strtoul(optarg,NULL,10);
 			if(value <= 255 && value > 0){
 				params->rightGain = value;
 			}
 			break;
-		case 'j':
+		case 'r':
 			value = strtoul(optarg,NULL,10);
 			if(value <= 255 && value > 0){
 				params->leftGain = value;
 			}
-			break;
-		case 'l':
+			break;*/
+		case 'd':
 			value = strtoul(optarg,NULL,10);
 			if(value >= LIBUSB_LOG_LEVEL_NONE && value <= LIBUSB_LOG_LEVEL_DEBUG){
 				params->libusbDebugLevel = value;
@@ -368,11 +339,7 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 
 void abortPlaying(int){
 	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-		if (isDeck) {
-			SteamDeck_PlayNote(&steamController1,i,NOTE_STOP);
-		} else {
-			SteamController_PlayNote(&steamController1,i,NOTE_STOP);
-		}
+		SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP); //Wait, this actually references the controller directly, why????????
 	}
 
 	SteamController_Close(&steamController1);
@@ -391,13 +358,13 @@ int main(int argc, char** argv)
 	params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
 	params.repeatSong = false;
 	params.midiSong = "\0";
-	params.leftGain = DEFAULT_GAIN;
-	params.rightGain = DEFAULT_GAIN;
+	//params.leftGain = DEFAULT_GAIN;
+	//params.rightGain = DEFAULT_GAIN;
 
 
 	//Parse arguments
 	if(!parseArguments(argc, argv, &params)){
-		cout << "Usage: steam-haptics-singer [-r] [-l DEBUG_LEVEL] [-i INTERVAL] MIDI_FILE" << endl;
+		cout << "Usage: steam-haptics-singer [-r] [-d DEBUG_LEVEL] [-i INTERVAL] MIDI_FILE" << endl;
 		return 1;
 	}
 
