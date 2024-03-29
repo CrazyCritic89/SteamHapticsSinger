@@ -100,7 +100,7 @@ void SteamController_Close(SteamControllerInfos* controller){
 
 //Steam Haptics Playblack
 int SteamHaptics_PlayNote(SteamControllerInfos* controller, int haptic, int note){
-	unsigned char dataBlob[64] = {0xea, //0x8F for Steam Controller, 0xEA for Steam Deck
+	unsigned char dataBlob[64] = {0xEA, //0x8F for Steam Controller, 0xEA for Steam Deck
 	                              0x00,
 	                              0x00, //Trackpad Select: 0x01 = Left, 0x00 = Right; 0x02 = Both but is only on Deck and is not used. The select is also flipped incode for Deck.
 	                              0x03, //Command Type			LSB Pulse High Duration			(What is command type? This haptic command is used for everything related to haptics, such as startup haptics. To implement them, they have a "type" selector. Type 3 is used since it corresponds to note playback.)
@@ -122,25 +122,25 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int haptic, int note
 	uint16_t duration = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 
 	if(controller->isDeck) {
-		dataBlob[0] = 0xea;
+		dataBlob[0] = 0xEA;
 		dataBlob[2] = !haptic;
-		dataBlob[6] = (int)frequency % 0xff;
-		dataBlob[7] = (int)frequency / 0xff;
-		dataBlob[8] = duration % 0xff;
-		dataBlob[9] = duration / 0xff;
+		dataBlob[6] = (int)frequency % 0xFF;
+		dataBlob[7] = (int)frequency / 0xFF;
+		dataBlob[8] = duration % 0xFF;
+		dataBlob[9] = duration / 0xFF;
 	} else {
 		double period = 1.0 / frequency;
 		uint16_t periodCommand = period * STEAM_CONTROLLER_MAGIC_PERIOD_RATIO; //Reminder to check if the Steam Controller tuning lines up with the Deck.
 		uint16_t repeatCommand = (note == NOTE_STOP) ? 0x0000 : 0x7fff;
 
-		dataBlob[0] = 0x8f;
+		dataBlob[0] = 0x8F;
 		dataBlob[2] = haptic;
-		dataBlob[3] = periodCommand % 0xff;
-		dataBlob[4] = periodCommand / 0xff;
-		dataBlob[5] = periodCommand % 0xff;
-		dataBlob[6] = periodCommand / 0xff;
-		dataBlob[7] = repeatCommand % 0xff;
-		dataBlob[8] = repeatCommand / 0xff;
+		dataBlob[3] = periodCommand % 0xFF;
+		dataBlob[4] = periodCommand / 0xFF;
+		dataBlob[5] = periodCommand % 0xFF;
+		dataBlob[6] = periodCommand / 0xFF;
+		dataBlob[7] = repeatCommand % 0xFF;
+		dataBlob[8] = repeatCommand / 0xFF;
 	}
 
 	int r;
