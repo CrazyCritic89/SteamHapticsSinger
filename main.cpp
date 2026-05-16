@@ -1,3 +1,5 @@
+#include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <cstring>
@@ -27,7 +29,7 @@ double midiFrequency[128]  = {0, 8.66196, 9.17702, 9.72272, 10.3009, 10.9134, 11
 
 
 struct ParamsStruct{
-	const char* midiSong;
+	const char* midiSongOrDevice;
 	unsigned int intervalUSec;
 	int libusbDebugLevel;
 	bool repeatSong;
@@ -274,10 +276,10 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 	MidiFile_t midifile;
 
 	//Open Midi File
-	midifile = MidiFile_load(params.midiSong);
+	midifile = MidiFile_load(params.midiSongOrDevice);
 
 	if(midifile == NULL){
-		cout << "Unable to open MIDI file!" << params.midiSong << endl;
+		cout << "Unable to open MIDI file!" << params.midiSongOrDevice << endl;
 		return;
 	}
 
@@ -287,13 +289,13 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 		return;
 	}
 	
-	if (strstr(params.midiSong,"dv")) {
+	if (strstr(params.midiSongOrDevice,"dv")) {
         std::cout << "Found \"dv\" in file name, assuming direct velocity to gain control" << std::endl;
 		directVel = true;
     }
 
 	//Waiting for user to press enter; YOURE WRONG, SULFURIC ACID!
-	cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop" << endl;
+	cout << "Starting playback of " << params.midiSongOrDevice  << "... press Ctrl+C anytime to stop" << endl;
 	sleep(1);
 
 	//This will contains the previous events accepted for each channel
@@ -373,9 +375,42 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 	
 	cout <<endl<< "Playback completed " << endl;
 }
+#ifdef __linux__
+void playDevice(SteamControllerInfos *controller, const ParamsStruct params) {
+  FILE *midiDevice = fopen(params.midiSongOrDevice, "r");
+  if (!midiDevice) {
+    cout << "Unable to open MIDI device!" << params.midiSongOrDevice << endl;
+    return;
+  }
 
+  cout << "Playing from MIDI device, press Ctrl+C to stop" << endl;
 
+  int currentNote[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
+  while (true) {
+    uint8_t midiEvent[3];
+    size_t bytesRead = fread(midiEvent, sizeof(uint8_t), 3, midiDevice);
+    if (bytesRead < 3) {
+      break;
+    }
 
+    uint8_t status = midiEvent[0] & 0xF0; // ignore channel
+    uint8_t channel = midiEvent[0] & 0x0F;
+    uint8_t note = midiEvent[1];
+    uint8_t velocity = midiEvent[2];
+
+    if (status == 0x90) { // Note On
+      currentNote[channel] = note;
+      SteamHaptics_PlayNote(controller, channel, note, velocity);
+      displayPlayedNotes(channel, note);
+    } else if (((status == 0x80) || (status == 0x90 && velocity == 0)) && note == currentNote[channel]) { // Note Off
+      SteamHaptics_PlayNote(controller, channel, NOTE_STOP, 0);
+      displayPlayedNotes(channel, NOTE_STOP);
+    }
+  }
+
+  fclose(midiDevice);
+}
+#endif
 
 
 bool parseArguments(int argc, char** argv, ParamsStruct* params){
@@ -430,7 +465,7 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 		}
 	}
 	if(optind == argc-1 ){
-		params->midiSong = argv[optind];
+		params->midiSongOrDevice = argv[optind];
 		return true;
 	}
 	else{
@@ -459,7 +494,7 @@ int main(int argc, char** argv)
 	params.intervalUSec = DEFAULT_INTERVAL_USEC;
 	params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
 	params.repeatSong = false;
-	params.midiSong = "\0";
+	params.midiSongOrDevice = "\0";
 	//params.leftGain = DEFAULT_GAIN;
 	//params.rightGain = DEFAULT_GAIN;
 
@@ -501,11 +536,15 @@ int main(int argc, char** argv)
 	//Set mecanism to stop playing when closing process
 	signal(SIGINT, abortPlaying);
 
+	#ifdef __linux__
+	if (std::filesystem::is_character_file(params.midiSongOrDevice)) {
+		playDevice(&steamController1, params);
+	}
+	#endif
 	//Playing song
 	do{
 		playSong(&steamController1,params);
 	}while(params.repeatSong);
-
 
 	//Releasing access to Steam Controller
 	SteamController_Close(&steamController1);
