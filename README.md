@@ -103,6 +103,8 @@ MIDI files may need to be edited with a software such as [MidiEditor](https://ww
 * Notes from others channels are ignored
 * **Avoid multiple notes active at the same time on the same channel**, since haptic actuators can only play one note at the time.
 
+On Linux, you can also use MIDI devices such as a MIDI keyboard. To do so, just run the program with the MIDI device as an argument instead of a MIDI file. You can find the MIDI device in `/dev/` as `midiX` or in `/dev/snd/` as `midiCXDY` (where X and Y are numbers).
+
 
 ## Compiling
 
