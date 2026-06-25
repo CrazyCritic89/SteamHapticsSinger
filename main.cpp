@@ -12,7 +12,7 @@
 
 #include <hidapi.h>
 #include <libusb.h>
-#include "midifile/midifile.h"
+#include <libremidi/reader.hpp>
 
 #define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 495483.0
 #define CHANNEL_COUNT					   4
@@ -137,35 +137,35 @@ bool SteamController_Open(SteamControllerInfos* controller){
 	}
 
 	//Load gain curves
-	std::ifstream file1,file2;
-	if (!noGainCurve) {
-		switch (controller->type) {
-			case ControllerType::Triton:
-				file1.open("gaincurve/Triton_Trackpads.txt");
-				file2.open("gaincurve/Triton_Rumble.txt");
-				if(!file1 || !file2) {
-					std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
-					break;
-				}
-				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
-					file2 >> gainCurveRb[i];
-				}
-				break;
-			case ControllerType::Jupiter:
-				file1.open("gaincurve/Jupiter.txt");
-				if(!file1) {
-					std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
-					break;
-				}
-				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
-				}
-				break;
-		}
-	}
-	file1.close();
-	file2.close();
+	// std::ifstream file1,file2;
+	// if (!noGainCurve) {
+	// 	switch (controller->type) {
+	// 		case ControllerType::Triton:
+	// 			file1.open("gaincurve/Triton_Trackpads.txt");
+	// 			file2.open("gaincurve/Triton_Rumble.txt");
+	// 			if(!file1 || !file2) {
+	// 				std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
+	// 				break;
+	// 			}
+	// 			for (int i = 0; i < 128; ++i) {
+	// 				file1 >> gainCurve[i];
+	// 				file2 >> gainCurveRb[i];
+	// 			}
+	// 			break;
+	// 		case ControllerType::Jupiter:
+	// 			file1.open("gaincurve/Jupiter.txt");
+	// 			if(!file1) {
+	// 				std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
+	// 				break;
+	// 			}
+	// 			for (int i = 0; i < 128; ++i) {
+	// 				file1 >> gainCurve[i];
+	// 			}
+	// 			break;
+	// 	}
+	// }
+	// file1.close();
+	// file2.close();
 
 	//If dev_handle is NULL, it's using HIDAPI so skip this
 	if(controller->dev_handle != NULL) {
@@ -265,7 +265,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		} else {
 			//Get frequency and gain needed depending on haptic
 			freq = (haptic > 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
-			gain = (haptic > 2) ? gainCurveRb[note] : gainCruveTr[note];
+			gain = (haptic > 2) ? gainCurveRb[note] : gainCurveTr[note];
 			dataBlob[0] = 0x83;
 			dataBlob[1] = haptic;
 			dataBlob[2] = ((directVel) ? (velocity * 255) / 127 - 128 : gain) + gainModifier[haptic];
@@ -358,7 +358,7 @@ void displayPlayedNotes(int channel, int8_t note){
 	std::cout.flush();
 }
 
-void playSong(SteamControllerInfos* controller,const ParamsStruct params){
+/*void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 	MidiFile_t midifile;
 
@@ -469,6 +469,42 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 	}
 	
 	std::cout <<std::endl<< "Playback completed, press any key to exit" << std::endl;
+}*/
+
+void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
+	//Load MIDI file
+	std::ifstream file{params.midiSong, std::ios::binary | std::ios::ate};
+    if (!file.is_open())
+    {
+        std::cout << "Could not open " << params.midiSong << std::endl;
+        return;
+    }
+
+	//Get size
+	std::streamsize size = file.tellg();
+	if (size > 1048576) {
+		std::cout << "Given file is larger than 1MB! Are you sure this is MIDI?" << std::endl;
+		return;
+	}
+
+	//Allocate
+	file.seekg(0, std::ios::beg);
+	std::vector<uint8_t> bytes(size);
+    bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+
+	//Initialize reader object
+    libremidi::reader r{true};
+
+    //Parse
+    libremidi::reader::parse_result result = r.parse(bytes);
+
+    if (result == libremidi::reader::invalid) {
+        std::cout << "Invalid MIDI file!" << std::endl;
+        return;
+    }
+
+	std::cout << "Success!" << std::endl;
+	return;
 }
 
 
@@ -592,7 +628,7 @@ int main(int argc, char** argv)
 			  "\n  -t	(Steam Controller 2026 Only) Limit to only two channels"
 			  "\n  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
 				"" << std::endl;
-		return 1;
+		//return 1;
 	}
 
 
@@ -615,7 +651,7 @@ int main(int argc, char** argv)
 
 	//Gaining access to Steam Controller
 	if(!SteamController_Open(&steamController1)){
-		return 1;
+		//return 1;
 	}
 
 	//Set mecanism to stop playing when closing process
