@@ -293,7 +293,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			dataBlob[5] = 0x80;
 			dataBlob[9] = 0x80;
 		} else {
-			freq = midiFrequencyDk[note];
+			freq = midiFrequency[note];
 			dataBlob[0] = 0xEA;
 			dataBlob[2] = !channel; //Swap haptics to match 2015
 			dataBlob[3] = 0x03; 
@@ -397,7 +397,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 	//Get current time point, will be used to know elapsed time
 	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
-	std::chrono::steady_clock::time_point tRestart = std::chrono::steady_clock::now();
+	//std::chrono::steady_clock::time_point tRestart = std::chrono::steady_clock::now();
 
 	//Iterate through events
 	MidiFileEvent_t currentEvent = MidiFile_getFirstEvent(midifile);
