@@ -313,6 +313,90 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 
 }*/
 
+#ifdef __linux__
+	#include <termios.h>
+
+	struct termios orig_termios;
+
+	void disableRawMode() {
+	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+	}
+
+	void enableRawMode() {
+		tcgetattr(STDIN_FILENO, &orig_termios);
+		struct termios raw = orig_termios;
+		raw.c_lflag &= ~(ICANON | ECHO);
+		tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+	}
+
+	bool isKeyInBuffer() {
+		fd_set fds;
+		struct timeval tv = {0, 0};
+
+		FD_ZERO(&fds);
+		FD_SET(STDIN_FILENO, &fds);
+
+		return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0;
+	}
+#endif
+
+//Retuns 0 - none, -1 - left, 2 - space, 1 - right
+int getPressedKey() {
+	char ch,seq1,seq2;
+	#ifdef __linux__
+	#define KEY_LEFT  'D'
+	#define KEY_RIGHT 'C'
+	#define KEY_SPACE ' '
+		if (isKeyInBuffer()) {
+			std::cin.get(ch);
+			if (ch == KEY_SPACE) {
+				return 2;
+			}
+			else if (ch == '\x1b') {
+				char seq1, seq2;
+				if (std::cin.get(seq1) && std::cin.get(seq2)) {
+					if (seq1 == '[') {
+						switch (seq2) {
+							//Left   
+							case KEY_LEFT:
+								return -1;
+								break;
+							//Right
+							case KEY_RIGHT:
+								return 1;
+								break;
+						}
+					}
+				}
+			}
+		}
+	#elif defined(_WIN32)
+		#include <conio.h>
+		#define KEY_LEFT  75
+		#define KEY_RIGHT 77
+		#define KEY_SPACE 32
+		if (_kbhit()) {
+			ch = _getch();
+			
+			if (ch == KEY_SPACE) {
+				return 2;
+			}
+			else if (ch == 0 || ch == 224) {
+				seq1 = _getch();
+
+				switch (seq1) {
+					case KEY_LEFT:
+						return -1;
+					case KEY_RIGHT:
+						return 1;
+
+				}
+			}
+		}
+	#endif
+	return 0;
+}
+
 void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
     static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"Left Rumble    : ",
@@ -423,8 +507,11 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
         return;
     }
 
+	//Hide cursor
+	std::cout << "\x1b[?25l" << std::flush;
+
 	//Pre-start
-	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop" << std::endl;
+	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop\n" << std::endl;
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 	//TODO: make something a little more fancy here | / - \ | 
 
@@ -433,8 +520,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 
 	//Clock setup
 	long beatDuration = 60'000'000 / r.startingTempo;
+	float tempo = 60 * 1'000'000 / beatDuration;
+	std::cout << "Tempo: " << tempo << std::endl;
     std::chrono::nanoseconds tickDuration(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
-	std::cout << "Tempo: " << 60 * 1'000'000 / beatDuration << std::endl;
 	//float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
 	int currentTick = 0;
 	int endTick = static_cast<int>(r.get_end_time());
@@ -469,7 +557,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 					if (event.m.get_meta_event_type() == libremidi::meta_event_type::TEMPO_CHANGE) {
 						beatDuration = ((((uint32_t)event.m.bytes[3]) << 16) + (event.m.bytes[4] << 8) + event.m.bytes[5]);
 						tickDuration = static_cast<std::chrono::nanoseconds>(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
-						std::cout << "Tempo: " << 60 * 1'000'000 / beatDuration << std::endl;
+						tempo = 60 * 1'000'000 / beatDuration;
+						std::cout << "Tempo: " << tempo << std::endl;
 					}
 				} else {
 					//This needs more work, we need to check if the NOTE OFF matches the previous NOTE ON depending on channel, and by default be NOTE OFF until set otherwise
@@ -639,6 +728,8 @@ void abortSignal(int) {
 }
 
 void abortPlaying(){
+	std::cout << "\x1b[?25h" << std::flush;
+
 	if(exitFlag) {
 		for(int i = 0 ; i < CHANNEL_COUNT ; i++){
 			SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0,0);
@@ -647,6 +738,10 @@ void abortPlaying(){
 
 	SteamController_Close(&steamController1);
 
+	#ifdef __linux__
+	disableRawMode();
+	#endif 
+
 	libusb_exit(NULL);
 	hid_exit();
 }
@@ -654,6 +749,16 @@ void abortPlaying(){
 int main(int argc, char** argv)
 {
 	std::cout <<"Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila"<<std::endl;
+
+	#ifdef __linux__
+	enableRawMode();
+	#endif
+
+	while (true) {
+		std::this_thread::sleep_for(std::chrono::microseconds(10000));
+		int a = getPressedKey();
+		if (a) std::cout << a << std::endl;
+	}
 
 	ParamsStruct params;
 	params.intervalUSec = DEFAULT_INTERVAL_USEC;
