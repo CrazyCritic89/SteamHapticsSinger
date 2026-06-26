@@ -1,4 +1,4 @@
-# Steam Haptics Singer (libremidi branch)
+# Steam Haptics Singer (libremidi)
 <img align="left" height="90" alt="shs_icon_new" src="https://github.com/user-attachments/assets/0c7629e8-b289-47d1-b0f1-560037f4139e" />
 <svg
    viewBox="0 0 36 36"
