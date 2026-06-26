@@ -16,12 +16,13 @@
 #include <libusb.h>
 #include <libremidi/reader.hpp>
 
-#define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 495483.0
-#define CHANNEL_COUNT					   4
-#define DEFAULT_INTERVAL_USEC			   10000
+#define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 	495483.0
+#define CHANNEL_COUNT						  	4
+#define DEFAULT_INTERVAL_USEC				   	10000
 
-#define DURATION_MAX		-1
-#define NOTE_STOP		   -1
+#define DURATION_MAX			-1
+#define NOTE_STOP		   		-1
+#define PROGRESS_BAR_LENGTH     32
 
 #define DEFAULT_GAIN 0
 
@@ -54,7 +55,7 @@ bool directVel = false;
 bool tritonLimit = false;
 bool tritonSwap = false;
 bool exitFlag = false;
-int channelCount = 2;
+int channelCount = 4;
 int gainModifier[5] = {0};
 bool noGainCurve = false;
 
@@ -169,21 +170,25 @@ void SteamController_Close(SteamControllerInfos* controller){
 	}
 }
 
-uint16_t pitchFrequency_uint16(const uint16_t (&midiFrequencyRef)[128], int note, int pitch_bend, int range) {
+uint16_t pitchFrequency_uint16(const uint16_t (&midiFrequencyRef)[128], int note, int pitch_bend, int pitch_range) {
 	if (pitch_bend == 0) return midiFrequencyRef[note];
-	double range_step = pitch_bend / (16384 / (range * 2));
-	int note_offset = (int)range_step - range;
+	double range_step = pitch_bend / (16384 / (pitch_range * 2));
+	int note_offset = note + (int)range_step - pitch_range;
 	double pitch_mul = range_step - (int)range_step;
-	int focus_note = note + note_offset;
-	return midiFrequencyRef[focus_note] + ((midiFrequencyRef[focus_note+1] - midiFrequencyRef[focus_note]) * pitch_mul);
+	return midiFrequencyRef[note_offset] + ((midiFrequencyRef[note_offset+1] - midiFrequencyRef[note_offset]) * pitch_mul);
 }
 
 int8_t gainSlide(const int8_t (&gainCurveRef)[128], int note, int pitch_bend) {
-	return 0;
+	if (pitch_bend == 0) return gainCurveRef[note];
+	double range_step = pitch_bend / (16384 / (2 * 2));
+	int note_offset = note + (int)range_step - 2;
+	double pitch_mul = range_step - (int)range_step;
+	return gainCurveRef[note_offset] + ((gainCurveRef[note_offset+1] - gainCurveRef[note_offset]) * pitch_mul);
 }
 
 //Steam Haptics Playblack
 int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int note, int velocity, int pitch_bend){
+	return 1;
 	if (channel > 1 && controller->type != ControllerType::Triton) return 1;
 	unsigned char dataBlob[64] = {0};
 	
@@ -308,7 +313,53 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 
 }*/
 
-void displayPlayedNotes(int channel, int8_t note){
+void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
+    static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
+	const char* textPerChannel[CHANNEL_COUNT] = {"Left Rumble    : ",
+                                                 "Right Rumble   : ",
+                                                 "Left Trackpad  : ",
+                                                 "Right Trackpad : "};
+	const char* noteBaseNameArray[12] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
+
+    if (channel >= 0 && channel < channelCount) {
+        notePerChannel[channel ^ 1 ^ (tritonSwap * 2)] = note;
+    }
+
+    //Save position
+    std::cout << "\x1b[s" << std::flush;
+
+    for (int i = 0; i < channelCount; ++i) {
+        std::cout << textPerChannel[(i + channelCount) & 3];
+        //Write OFF
+        if (notePerChannel[i] == NOTE_STOP) {
+            std::cout << "OFF";
+        } else {
+           //Write note name
+		    std::cout << noteBaseNameArray[notePerChannel[i]%12];
+			int octave = (notePerChannel[i]/12)-1;
+			std::cout << octave;
+        }
+        std::cout << std::endl;
+    }
+
+    const int pos = PROGRESS_BAR_LENGTH * currentTick / (endTick + 1);
+    for (int i = 0; i < PROGRESS_BAR_LENGTH; ++i) {
+        if (i < pos) {
+            std::cout << "=";
+        } 
+        else if (i == pos) {
+            std::cout << "|";
+        }
+        else {
+            std::cout << "-";
+        }
+    }
+
+    //Go back up
+    std::cout << "\x1b[u" << std::flush;
+}
+
+void displayPlayedNotes_old(int channel, int8_t note){
 	static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : ",", LEFT haptic : ",", RIGHT haptic : "};
 	const char* noteBaseNameArray[12] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
@@ -428,7 +479,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 						int channel = event.m.get_channel()-1;
 
 						//Skip if channel out of range
-						if (channel > CHANNEL_COUNT) continue;
+						if (channel >= channelCount) continue;
 						
 						//Set note
 						int note = NOTE_STOP;
@@ -439,32 +490,55 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 							note = event.m.bytes[1];
 							velocity = event.m.bytes[2];
 							eventOnChannel[channel] = &event;
+
 						//Check if event is note off
 						} else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
+
 							//Get previous event
+							//Make sure it's not null
+							if (eventOnChannel[channel] == nullptr) continue;
 							const libremidi::track_event previousEvent = *eventOnChannel[channel];
+
 							//Skip if the previous event wasn't note on (should always be)
 							if (previousEvent.m.get_message_type() != libremidi::message_type::NOTE_ON) continue;
+
 							//Skip if the notes don't match
 							if (previousEvent.m.bytes[1] != event.m.bytes[1]) continue;
+
 							//Skip if they're on the same tick
 							if (previousEvent.tick == event.tick) continue;
 						}
+
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
-						displayPlayedNotes(channel,note);
+						displayPlayedNotes(channel,note,currentTick,endTick);
+
 					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
+
+						//Get pitch bend from current event
+						int pitchBend = event.m.bytes[1] << 7 + event.m.bytes[2];
+
+						//Skip if pitch bend is 0
+						if (pitchBend == 0) continue;
+
 						//Get Channel
 						int channel = event.m.get_channel()-1;
+
+						//Skip if channel out of range
+						if (channel >= channelCount) continue;
+						//std::cout << channel << std::endl;
+
 						//Get previous event
+						//Make sure it's not null
+						if (eventOnChannel[channel] == nullptr) continue;
 						const libremidi::track_event previousEvent = *eventOnChannel[channel];
+
 						//Skip if the previous event wasn't note on (should always be)
 						if (previousEvent.m.get_message_type() != libremidi::message_type::NOTE_ON) continue;
 						//Get data from previous event
 						channel = previousEvent.m.get_channel()-1;
 						int note = previousEvent.m.bytes[1];
 						int velocity = previousEvent.m.bytes[2];
-						//Get pitch bend from current event
-						int pitchBend = event.m.bytes[1] << 7 + event.m.bytes[2];
+						
 						SteamHaptics_PlayNote(controller,channel,note,velocity,pitchBend);
 					}
 				}
@@ -477,7 +551,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
 	}
 	
-	std::cout <<std::endl<< "Playback completed, press any key to exit" << std::endl;
+	std::cout << "\n\n\n\n\n\nPlayback completed, press any key to exit" << std::endl;
 
 	return;
 }
@@ -626,7 +700,7 @@ int main(int argc, char** argv)
 
 	//Gaining access to Steam Controller
 	if(!SteamController_Open(&steamController1)){
-		return 1;
+		//return 1;
 	}
 
 	//Set mecanism to stop playing when closing process
