@@ -6,6 +6,7 @@
 
 #include <stdint-gcc.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <signal.h>
 #include <stdio.h>
@@ -264,8 +265,8 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			dataBlob[6] = 0x80;
 		} else {
 			//Get frequency and gain needed depending on haptic
-			freq = (haptic > 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
-			gain = (haptic > 2) ? gainCurveRb[note] : gainCurveTr[note];
+			freq = (haptic < 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
+			gain = (haptic < 2) ? gainCurveRb[note] : gainCurveTr[note];
 			dataBlob[0] = 0x83;
 			dataBlob[1] = haptic;
 			dataBlob[2] = ((directVel) ? (velocity * 255) / 127 - 128 : gain) + gainModifier[haptic];
@@ -505,78 +506,73 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 
 	//Pre-start
 	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop" << std::endl;
-	//std::this_thread::sleep_for(std::chrono::seconds(1));
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 	//TODO: make something a little more fancy here | / - \ | 
 
+	//Now try to stop notes on exit
+	exitFlag = true;
+
 	//Clock setup
-    float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
+    std::chrono::nanoseconds tickDuration(static_cast<long>(60'000'000'000 / r.startingTempo / r.ticksPerBeat));
+	//float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
+	//std::cout << tickDuration.count() << std::endl;
+	//return;
 	int currentTick = 0;
 	int endTick = static_cast<int>(r.get_end_time());
 	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
 	std::vector<size_t> eventIndex(r.tracks.size(),0);
-	//size_t eventIndex[4] = {0};
+
+	//std::chrono::nanoseconds accumulator(0);
 
 	while (currentTick <= endTick) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		
-		//Advance tick
-		if(timeElapsedSince(tOrigin) > tickDuration) {
-			tOrigin = std::chrono::steady_clock::now();
-			currentTick++;
-		}
+		std::this_thread::sleep_for(std::chrono::microseconds(params.intervalUSec));
+		//usleep(10000);
 
-		//libremidi::track_event* acceptedEvents[CHANNEL_COUNT] = {r.tracks.};
+		std::chrono::steady_clock::time_point tNow = std::chrono::steady_clock::now();
+		//std::chrono::nanoseconds time_delta = tNow - tOrigin;
+		if (tNow - tOrigin >= tickDuration) {
+			int tickAmount = std::chrono::duration_cast<std::chrono::nanoseconds>(tNow - tOrigin) / tickDuration;
+			currentTick += tickAmount;
+			tOrigin += tickDuration * tickAmount;
+		}
 
 		//Get MIDI data
 		for (size_t i = 0; i < r.tracks.size(); ++i) {
-		//for (const libremidi::midi_track& track : r.tracks) {
-			// std::cout << i << std::endl;
-			// std::cout << eventIndex[i] << std::endl;
-			// std::cout << r.tracks[i].size() << std::endl;
 			const libremidi::midi_track& track = r.tracks[i];
-			//if (eventIndex[i] >= track.size()) continue;
-			
-			//std::cout << r.tracks[i].size() << std::endl;
 			while (eventIndex[i] < track.size()) {
-			//for (const libremidi::track_event& event : track) {
-				//std::cout << "hi" << std::endl;
 				//If the current event hasn't happened yet, we can't do it, break out of loop
 				const libremidi::track_event& event = track[eventIndex[i]];
 				if (currentTick < event.tick) break;
-				//std::cout << currentTick << std::endl;
-				//std::cout << event.tick << std::endl;
-				//std::cout << eventIndex[i] << std::endl;
 				eventIndex[i]++;
 
-				//std::cout << "hi" << std::endl;
 
-				// int eventChannel = event.m.get_channel()-1;
-				// if (eventChannel < CHANNEL_COUNT) {
-				// 	acceptedEvents[eventChannel] = &event;
-				// }
+				if (event.m.is_meta_event()) {
 
-				if (!event.m.is_meta_event()) {
+				} else {
+					
+					int channel = event.m.get_channel()-1;
 					if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-						std::cout << event.m.get_channel() << " " << static_cast<int>(event.m.bytes[1]) << std::endl;
+						int note = static_cast<int>(event.m.bytes[1]);
+						int velocity = static_cast<int>(event.m.bytes[2]);
+						SteamHaptics_PlayNote(controller,channel,note,velocity);
+						displayPlayedNotes(channel,note);
+					} else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
+						SteamHaptics_PlayNote(controller,channel,NOTE_STOP,0);
+						displayPlayedNotes(channel,NOTE_STOP);
 					}
+					
 				}
 			}
 		}
-
-		//Play what we just got
-		/*for (int currentChannel = 0 ; currentChannel < channelCount ; currentChannel++) {
-			//const libremidi::track_event& currentEvent = *acceptedEvents[currentChannel];
-			std::cout << acceptedEvents[0]->tick << std::endl;
-			libremidi::track_event currentEvent = *acceptedEvents[currentChannel];
-			if (currentEvent.m.is_meta_event()) {
-				if (currentEvent.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-					std::cout << currentEvent.m.get_channel() << " " << static_cast<int>(currentEvent.m.bytes[1]) << std::endl;
-				}
-			}
-		}*/
-
-
 	}
+
+	//Stop everything just in case
+	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
+		SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0); //Wait, this actually references the controller directly, why????????
+	}
+	
+	std::cout <<std::endl<< "Playback completed, press any key to exit" << std::endl;
+
 	return;
 }
 
@@ -701,7 +697,7 @@ int main(int argc, char** argv)
 			  "\n  -t	(Steam Controller 2026 Only) Limit to only two channels"
 			  "\n  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
 				"" << std::endl;
-		//return 1;
+		return 1;
 	}
 
 
@@ -724,7 +720,7 @@ int main(int argc, char** argv)
 
 	//Gaining access to Steam Controller
 	if(!SteamController_Open(&steamController1)){
-		//return 1;
+		return 1;
 	}
 
 	//Set mecanism to stop playing when closing process
