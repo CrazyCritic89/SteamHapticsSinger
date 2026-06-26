@@ -319,14 +319,6 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 	return 0;
 }
 
-float timeElapsedSince(std::chrono::steady_clock::time_point tOrigin){
-	using namespace std::chrono;
-	steady_clock::time_point tNow = steady_clock::now();
-	duration<double> time_span = duration_cast<duration<double>>(tNow - tOrigin);
-	return time_span.count();
-}
-
-
 void displayPlayedNotes(int channel, int8_t note){
 	static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : ",", LEFT haptic : ",", RIGHT haptic : "};
@@ -513,23 +505,21 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	exitFlag = true;
 
 	//Clock setup
-    std::chrono::nanoseconds tickDuration(static_cast<long>(60'000'000'000 / r.startingTempo / r.ticksPerBeat));
+	long beatDuration = 60'000'000 / r.startingTempo;
+    std::chrono::nanoseconds tickDuration(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
+	std::cout << "Tempo: " << 60 * 1'000'000 / beatDuration << std::endl;
 	//float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
-	//std::cout << tickDuration.count() << std::endl;
-	//return;
 	int currentTick = 0;
 	int endTick = static_cast<int>(r.get_end_time());
 	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
-	std::vector<size_t> eventIndex(r.tracks.size(),0);
-
-	//std::chrono::nanoseconds accumulator(0);
+	std::vector<size_t> trackIndex(r.tracks.size(),0);
+	const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {};
 
 	while (currentTick <= endTick) {
 		std::this_thread::sleep_for(std::chrono::microseconds(params.intervalUSec));
-		//usleep(10000);
 
+		//Accumulate tick
 		std::chrono::steady_clock::time_point tNow = std::chrono::steady_clock::now();
-		//std::chrono::nanoseconds time_delta = tNow - tOrigin;
 		if (tNow - tOrigin >= tickDuration) {
 			int tickAmount = std::chrono::duration_cast<std::chrono::nanoseconds>(tNow - tOrigin) / tickDuration;
 			currentTick += tickAmount;
@@ -539,27 +529,48 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 		//Get MIDI data
 		for (size_t i = 0; i < r.tracks.size(); ++i) {
 			const libremidi::midi_track& track = r.tracks[i];
-			while (eventIndex[i] < track.size()) {
+			while (trackIndex[i] < track.size()) {
+				const libremidi::track_event& event = track[trackIndex[i]];
 				//If the current event hasn't happened yet, we can't do it, break out of loop
-				const libremidi::track_event& event = track[eventIndex[i]];
 				if (currentTick < event.tick) break;
-				eventIndex[i]++;
+				//Increment the index of this track
+				trackIndex[i]++;
 
-
+				//Get message data
 				if (event.m.is_meta_event()) {
-
-				} else {
-					
-					int channel = event.m.get_channel()-1;
-					if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-						int note = static_cast<int>(event.m.bytes[1]);
-						int velocity = static_cast<int>(event.m.bytes[2]);
-						SteamHaptics_PlayNote(controller,channel,note,velocity);
-						displayPlayedNotes(channel,note);
-					} else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
-						SteamHaptics_PlayNote(controller,channel,NOTE_STOP,0);
-						displayPlayedNotes(channel,NOTE_STOP);
+					//TEMPO CHANGE
+					if (event.m.get_meta_event_type() == libremidi::meta_event_type::TEMPO_CHANGE) {
+						beatDuration = ((((uint32_t)event.m.bytes[3]) << 16) + (event.m.bytes[4] << 8) + event.m.bytes[5]);
+						tickDuration = static_cast<std::chrono::nanoseconds>(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
+						std::cout << "Tempo: " << 60 * 1'000'000 / beatDuration << std::endl;
 					}
+				} else {
+					//This needs more work, we need to check if the NOTE OFF matches the previous NOTE ON depending on channel, and by default be NOTE OFF until set otherwise
+					if (event.m.is_note_on_or_off()) {
+						int channel = event.m.get_channel()-1;
+						if (channel > CHANNEL_COUNT) continue;
+						const libremidi::track_event previousEvent = &eventOnChannel[channel];
+						if (previousEvent.m.get_message_type )
+						int note = NOTE_STOP;
+						int velocity = 0;
+						if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
+							int note = static_cast<int>(event.m.bytes[1]);
+							int velocity = static_cast<int>(event.m.bytes[2]);
+							std::cout << channel << std::endl;
+						}
+						SteamHaptics_PlayNote(controller,channel,note,127);
+						displayPlayedNotes(channel,note);
+					}
+					// int channel = event.m.get_channel()-1;
+					// if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
+					// 	int note = static_cast<int>(event.m.bytes[1]);
+					// 	int velocity = static_cast<int>(event.m.bytes[2]);
+					// 	SteamHaptics_PlayNote(controller,channel,note,velocity);
+					// 	displayPlayedNotes(channel,note);
+					// } else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
+					// 	SteamHaptics_PlayNote(controller,channel,NOTE_STOP,0);
+					// 	displayPlayedNotes(channel,NOTE_STOP);
+					// }
 					
 				}
 			}
