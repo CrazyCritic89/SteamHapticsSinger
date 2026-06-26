@@ -55,4 +55,4 @@
   </g>
 </svg>
 
-This branch is a rewrite / enhancement of the playback code (along with other areas) specfically moving to libremidi instead of MidiFile. This also attempts to unify real-time MIDI into the main program by using libremidi as well. Currently work in progress.
+This branch is a rewrite / enhancement of the playback code (along with other areas). It is specfically moving to libremidi instead of MidiFile. This also attempts to unify real-time MIDI into the main program by using libremidi as well. Currently work in progress.
