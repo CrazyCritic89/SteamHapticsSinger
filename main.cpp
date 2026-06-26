@@ -2,11 +2,12 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
+
 #include <cstring>
+#include <cmath>
 
 #include <stdint-gcc.h>
 #include <stdint.h>
-#include <unistd.h>
 
 #include <signal.h>
 #include <stdio.h>
@@ -32,14 +33,14 @@
 #define STEAM_PUCK				0x1304
 #define STEAM_DECK				0x1205
 
-double midiFrequency[128]  = {0, 8.662, 9.177, 9.723, 10.301, 10.913, 11.562, 12.250, 12.978, 13.750, 14.568, 15.434, 16.352, 17.324, 18.354, 19.445, 20.602, 21.827, 23.125, 24.500, 25.957, 27.500, 29.135, 30.868, 32.703, 34.648, 36.708, 38.891, 41.203, 43.654, 46.249, 48.999, 51.913, 55.000, 58.270, 61.735, 65.406, 69.296, 73.416, 77.782, 82.407, 87.307, 92.499, 97.999, 103.826, 110.000, 116.541, 123.471, 130.813, 138.591, 146.832, 155.563, 164.814, 174.614, 184.997, 195.998, 207.652, 220.000, 233.082, 246.942, 261.626, 277.183, 293.665, 311.127, 329.628, 349.228, 369.994, 391.995, 415.305, 440.000, 466.164, 493.883, 523.251, 554.365, 587.330, 622.254, 659.255, 698.456, 739.989, 783.991, 830.609, 880.000, 932.328, 987.767, 1046.502, 1108.731, 1174.659, 1244.508, 1318.510, 1396.913, 1479.978, 1567.982, 1661.219, 1760.000, 1864.655, 1975.533, 2093.005, 2217.461, 2349.318, 2489.016, 2637.020, 2793.826, 2959.955, 3135.963, 3322.438, 3520.000, 3729.310, 3951.066, 4186.009, 4434.922, 4698.636, 4978.032, 5274.041, 5587.652, 5919.911, 6271.927, 6644.875, 7040.000, 7458.620, 7902.133, 8372.018, 8869.844, 9397.273, 9956.063, 10548.082, 11175.303, 11839.822, 12543.854};
-uint16_t midiFrequencyDk[128] = {440};
-uint16_t midiFrequencyRb[128] = {0, 10, 10, 11, 11, 12, 13, 13, 14, 15, 16, 16, 17, 18, 19, 20, 22, 23, 24, 25, 27, 29, 30, 32, 34, 36, 38, 40, 42, 45, 47, 50, 53, 56, 59, 63, 66, 70, 75, 80, 84, 89, 94, 100, 107, 113, 120, 126, 134, 142, 151, 160, 169, 179, 189, 200, 213, 226, 239, 253, 267, 283, 300, 318, 336, 357, 377, 399, 423, 449, 477, 505, 535, 566, 598, 636, 674, 713, 756, 800, 848, 898, 951, 1008, 1068, 1131, 1199, 1270, 1345, 1425, 1510, 1600, 1693, 1792, 1897, 2008, 2125, 2249, 2381, 2521, 2669, 2826, 2992, 3168, 3354, 3552, 3761, 3983, 4218, 4467, 4731, 5010, 5306, 5620, 5952, 6304, 6677, 7072, 7491, 7934, 8404, 8902, 9429, 9988, 10580, 11207, 11872, 12576};
-uint16_t midiFrequencyTr[128] = {0, 9, 9, 10, 10, 11, 12, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21, 22, 23, 24, 26, 28, 29, 31, 33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 58, 62, 65, 69, 73, 78, 82, 87, 92, 98, 104, 110, 117, 123, 131, 139, 147, 156, 165, 175, 185, 196, 208, 220, 233, 247, 261, 276, 293, 310, 328, 349, 369, 391, 414, 439, 466, 493, 522, 552, 584, 621, 658, 696, 738, 781, 828, 877, 929, 985, 1043, 1105, 1171, 1240, 1314, 1392, 1475, 1562, 1655, 1754, 1858, 1969, 2085, 2209, 2340, 2480, 2627, 2784, 2949, 3124, 3311, 3507, 3716, 3938, 4173, 4422, 4686, 4965, 5261, 5575, 5907, 6259, 6632, 7027, 7446, 7889, 8359, 8857, 9384, 9943, 10535, 11162, 11827, 12531};
+const double midiFrequency[128]  = {0, 8.662, 9.177, 9.723, 10.301, 10.913, 11.562, 12.250, 12.978, 13.750, 14.568, 15.434, 16.352, 17.324, 18.354, 19.445, 20.602, 21.827, 23.125, 24.500, 25.957, 27.500, 29.135, 30.868, 32.703, 34.648, 36.708, 38.891, 41.203, 43.654, 46.249, 48.999, 51.913, 55.000, 58.270, 61.735, 65.406, 69.296, 73.416, 77.782, 82.407, 87.307, 92.499, 97.999, 103.826, 110.000, 116.541, 123.471, 130.813, 138.591, 146.832, 155.563, 164.814, 174.614, 184.997, 195.998, 207.652, 220.000, 233.082, 246.942, 261.626, 277.183, 293.665, 311.127, 329.628, 349.228, 369.994, 391.995, 415.305, 440.000, 466.164, 493.883, 523.251, 554.365, 587.330, 622.254, 659.255, 698.456, 739.989, 783.991, 830.609, 880.000, 932.328, 987.767, 1046.502, 1108.731, 1174.659, 1244.508, 1318.510, 1396.913, 1479.978, 1567.982, 1661.219, 1760.000, 1864.655, 1975.533, 2093.005, 2217.461, 2349.318, 2489.016, 2637.020, 2793.826, 2959.955, 3135.963, 3322.438, 3520.000, 3729.310, 3951.066, 4186.009, 4434.922, 4698.636, 4978.032, 5274.041, 5587.652, 5919.911, 6271.927, 6644.875, 7040.000, 7458.620, 7902.133, 8372.018, 8869.844, 9397.273, 9956.063, 10548.082, 11175.303, 11839.822, 12543.854};
+const uint16_t midiFrequencyDk[128] = {440};
+const uint16_t midiFrequencyRb[128] = {0, 10, 10, 11, 11, 12, 13, 13, 14, 15, 16, 16, 17, 18, 19, 20, 22, 23, 24, 25, 27, 29, 30, 32, 34, 36, 38, 40, 42, 45, 47, 50, 53, 56, 59, 63, 66, 70, 75, 80, 84, 89, 94, 100, 107, 113, 120, 126, 134, 142, 151, 160, 169, 179, 189, 200, 213, 226, 239, 253, 267, 283, 300, 318, 336, 357, 377, 399, 423, 449, 477, 505, 535, 566, 598, 636, 674, 713, 756, 800, 848, 898, 951, 1008, 1068, 1131, 1199, 1270, 1345, 1425, 1510, 1600, 1693, 1792, 1897, 2008, 2125, 2249, 2381, 2521, 2669, 2826, 2992, 3168, 3354, 3552, 3761, 3983, 4218, 4467, 4731, 5010, 5306, 5620, 5952, 6304, 6677, 7072, 7491, 7934, 8404, 8902, 9429, 9988, 10580, 11207, 11872, 12576};
+const uint16_t midiFrequencyTr[128] = {0, 9, 9, 10, 10, 11, 12, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21, 22, 23, 24, 26, 28, 29, 31, 33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 58, 62, 65, 69, 73, 78, 82, 87, 92, 98, 104, 110, 117, 123, 131, 139, 147, 156, 165, 175, 185, 196, 208, 220, 233, 247, 261, 276, 293, 310, 328, 349, 369, 391, 414, 439, 466, 493, 522, 552, 584, 621, 658, 696, 738, 781, 828, 877, 929, 985, 1043, 1105, 1171, 1240, 1314, 1392, 1475, 1562, 1655, 1754, 1858, 1969, 2085, 2209, 2340, 2480, 2627, 2784, 2949, 3124, 3311, 3507, 3716, 3938, 4173, 4422, 4686, 4965, 5261, 5575, 5907, 6259, 6632, 7027, 7446, 7889, 8359, 8857, 9384, 9943, 10535, 11162, 11827, 12531};
 
-int8_t gainCurveDk[128] = {DEFAULT_GAIN};
-int8_t gainCurveRb[128] = {DEFAULT_GAIN};
-int8_t gainCurveTr[128] = {DEFAULT_GAIN};
+const int8_t gainCurveDk[128] = {DEFAULT_GAIN};
+const int8_t gainCurveRb[128] = {DEFAULT_GAIN};
+const int8_t gainCurveTr[128] = {DEFAULT_GAIN};
 
 struct ParamsStruct{
 	const char* midiSong;
@@ -137,37 +138,6 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		return false;
 	}
 
-	//Load gain curves
-	// std::ifstream file1,file2;
-	// if (!noGainCurve) {
-	// 	switch (controller->type) {
-	// 		case ControllerType::Triton:
-	// 			file1.open("gaincurve/Triton_Trackpads.txt");
-	// 			file2.open("gaincurve/Triton_Rumble.txt");
-	// 			if(!file1 || !file2) {
-	// 				std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
-	// 				break;
-	// 			}
-	// 			for (int i = 0; i < 128; ++i) {
-	// 				file1 >> gainCurve[i];
-	// 				file2 >> gainCurveRb[i];
-	// 			}
-	// 			break;
-	// 		case ControllerType::Jupiter:
-	// 			file1.open("gaincurve/Jupiter.txt");
-	// 			if(!file1) {
-	// 				std::cout << "Could not open gain curve, defaulting to 0" << std::endl;
-	// 				break;
-	// 			}
-	// 			for (int i = 0; i < 128; ++i) {
-	// 				file1 >> gainCurve[i];
-	// 			}
-	// 			break;
-	// 	}
-	// }
-	// file1.close();
-	// file2.close();
-
 	//If dev_handle is NULL, it's using HIDAPI so skip this
 	if(controller->dev_handle != NULL) {
 		//On Linux, automatically detach and reattach kernel module
@@ -199,8 +169,21 @@ void SteamController_Close(SteamControllerInfos* controller){
 	}
 }
 
+uint16_t pitchFrequency_uint16(const uint16_t (&midiFrequencyRef)[128], int note, int pitch_bend, int range) {
+	if (pitch_bend == 0) return midiFrequencyRef[note];
+	double range_step = pitch_bend / (16384 / (range * 2));
+	int note_offset = (int)range_step - range;
+	double pitch_mul = range_step - (int)range_step;
+	int focus_note = note + note_offset;
+	return midiFrequencyRef[focus_note] + ((midiFrequencyRef[focus_note+1] - midiFrequencyRef[focus_note]) * pitch_mul);
+}
+
+int8_t gainSlide(const int8_t (&gainCurveRef)[128], int note, int pitch_bend) {
+	return 0;
+}
+
 //Steam Haptics Playblack
-int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int note, int velocity){
+int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int note, int velocity, int pitch_bend){
 	if (channel > 1 && controller->type != ControllerType::Triton) return 1;
 	unsigned char dataBlob[64] = {0};
 	
@@ -265,8 +248,10 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			dataBlob[6] = 0x80;
 		} else {
 			//Get frequency and gain needed depending on haptic
-			freq = (haptic < 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
-			gain = (haptic < 2) ? gainCurveRb[note] : gainCurveTr[note];
+			//const uint16_t* freq[128] = (haptic < 2) ? &midiFrequencyRb : midiFrequencyTr;
+			//freq = (pitchpitchFrequency_uint32(midiFrequencyRb, note, pitch_bend)Bend == 0) ? ((haptic < 2) ? midiFrequencyRb[note] : midiFrequencyTr[note]) : pitchFrequency(&midiFrequency);
+			freq = (haptic < 2) ? pitchFrequency_uint16(midiFrequencyRb, note, pitch_bend,0) : pitchFrequency_uint16(midiFrequencyTr, note, pitch_bend,0);
+			gain = (haptic < 2) ? gainSlide(gainCurveRb,note,pitch_bend) : gainSlide(gainCurveRb,note,pitch_bend);
 			dataBlob[0] = 0x83;
 			dataBlob[1] = haptic;
 			dataBlob[2] = ((directVel) ? (velocity * 255) / 127 - 128 : gain) + gainModifier[haptic];
@@ -319,6 +304,10 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 	return 0;
 }
 
+/*double pitchFrequency_double(int low_note, int base_note, int high_note, int pitch_bend) {
+
+}*/
+
 void displayPlayedNotes(int channel, int8_t note){
 	static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : ",", LEFT haptic : ",", RIGHT haptic : "};
@@ -350,119 +339,6 @@ void displayPlayedNotes(int channel, int8_t note){
 	std::cout << "\r" ;
 	std::cout.flush();
 }
-
-/*void playSong(SteamControllerInfos* controller,const ParamsStruct params){
-
-	MidiFile_t midifile;
-
-	//Open Midi File
-	midifile = MidiFile_load(params.midiSong);
-
-	if(midifile == NULL){
-		std::cout << "Unable to open MIDI file!" << params.midiSong << std::endl;
-		return;
-	}
-
-	//Check if file contains at least one midi event
-	if(MidiFile_getFirstEvent(midifile) == NULL){
-		std::cout << "MIDI file is empty!" << std::endl;
-		return;
-	}
-	
-	if (strstr(params.midiSong,"_dv")) {
-        std::cout << "Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
-		directVel = true;
-    }
-	if (strstr(params.midiSong,"_dc")) {
-		std::cout << "THIS FILE MAY BE FOR A NEWER VERSION OF STEAM HAPTICS SINGER! Found \"_dv\" in file name, assuming direct velocity to gain control"
-		directVel = true;
-	}
-
-	//Waiting for user to press enter; YOURE WRONG, SULFURIC ACID!
-	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop" << std::endl;
-	sleep(1);
-
-	//Now try to stop notes on exit
-	exitFlag = true;
-	
-	//This will contains the previous events accepted for each channel
-	MidiFileEvent_t acceptedEventPerChannel[CHANNEL_COUNT] = {0};
-
-	//Get current time point, will be used to know elapsed time
-	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
-	//std::chrono::steady_clock::time_point tRestart = std::chrono::steady_clock::now();
-
-	//Iterate through events
-	MidiFileEvent_t currentEvent = MidiFile_getFirstEvent(midifile);
-	
-	while(currentEvent != NULL){
-		usleep(params.intervalUSec);
-
-		//This will contains the events to play
-		MidiFileEvent_t eventsToPlay[CHANNEL_COUNT] = {NULL};
-
-		//We now need to play all events with tick < currentTime
-		long currentTick = MidiFile_getTickFromTime(midifile,timeElapsedSince(tOrigin));
-
-		//Iterate through all events until the current time, and selecte potential events to play
-		for( ; currentEvent != NULL && MidiFileEvent_getTick(currentEvent) < currentTick ; currentEvent = MidiFileEvent_getNextEventInFile(currentEvent)){
-
-			//Only process note start events or note end events matching previous event
-			if (!MidiFileEvent_isNoteStartEvent(currentEvent) && !MidiFileEvent_isNoteEndEvent(currentEvent)) continue;
-
-			//Get channel event
-			int eventChannel = MidiFileVoiceEvent_getChannel(currentEvent);
-
-			//If channel is other than 0 or 1, skip this event, we cannot play it with only 1 steam controller
-			if(eventChannel < 0 || !(eventChannel < channelCount)) continue;
-
-			//If event is note off and does not match previous played event, skip it
-			if(MidiFileEvent_isNoteEndEvent(currentEvent)){
-				MidiFileEvent_t previousEvent = acceptedEventPerChannel[eventChannel];
-
-				//Skip if current event is not ending previous event,
-				// or if they share the same tick ( end event after start evetn on same tick )
-				if(MidiFileNoteStartEvent_getNote(previousEvent) != MidiFileNoteEndEvent_getNote(currentEvent)
-				||(MidiFileEvent_getTick(currentEvent) == MidiFileEvent_getTick(previousEvent)))
-					continue;
-			}
-
-			//If we arrive here, this event is accepted
-			eventsToPlay[eventChannel] = currentEvent;
-			acceptedEventPerChannel[eventChannel]=currentEvent;
-		}
-
-		//Now play the last events found
-		for(int currentChannel = 0 ; currentChannel < channelCount ; currentChannel++){
-			MidiFileEvent_t selectedEvent = eventsToPlay[currentChannel];
-
-			//If no note event available on the channel, skip it
-			if(!MidiFileEvent_isNoteStartEvent(selectedEvent) && !MidiFileEvent_isNoteEndEvent(selectedEvent)) continue;
-
-			//Set note event
-			int8_t eventNote = NOTE_STOP;
-			int8_t eventVel  = 0;
-			if(MidiFileEvent_isNoteStartEvent(selectedEvent)){
-				//NO LONGER NEEDED: Send note stop before playing to prevent Steam Controller (2026) rebooting when using motors
-				//Check to see if drifting out of tune is still an issue
-				//SteamHaptics_PlayNote(controller,currentChannel,NOTE_STOP,0);
-				eventNote = MidiFileNoteStartEvent_getNote(selectedEvent);
-				eventVel  = MidiFileNoteStartEvent_getVelocity(selectedEvent);
-			}
-
-			//Play notes
-			SteamHaptics_PlayNote(controller,currentChannel,eventNote,eventVel);
-
-			displayPlayedNotes(currentChannel,eventNote);
-		}
-	}
-
-	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-		SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0); //Wait, this actually references the controller directly, why????????
-	}
-	
-	std::cout <<std::endl<< "Playback completed, press any key to exit" << std::endl;
-}*/
 
 void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	//Load MIDI file
@@ -547,39 +423,58 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 				} else {
 					//This needs more work, we need to check if the NOTE OFF matches the previous NOTE ON depending on channel, and by default be NOTE OFF until set otherwise
 					if (event.m.is_note_on_or_off()) {
+						
+						//Get Channel
 						int channel = event.m.get_channel()-1;
+
+						//Skip if channel out of range
 						if (channel > CHANNEL_COUNT) continue;
-						const libremidi::track_event previousEvent = &eventOnChannel[channel];
-						if (previousEvent.m.get_message_type )
+						
+						//Set note
 						int note = NOTE_STOP;
 						int velocity = 0;
+
+						//Check if note on
 						if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-							int note = static_cast<int>(event.m.bytes[1]);
-							int velocity = static_cast<int>(event.m.bytes[2]);
-							std::cout << channel << std::endl;
+							note = event.m.bytes[1];
+							velocity = event.m.bytes[2];
+							eventOnChannel[channel] = &event;
+						//Check if event is note off
+						} else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
+							//Get previous event
+							const libremidi::track_event previousEvent = *eventOnChannel[channel];
+							//Skip if the previous event wasn't note on (should always be)
+							if (previousEvent.m.get_message_type() != libremidi::message_type::NOTE_ON) continue;
+							//Skip if the notes don't match
+							if (previousEvent.m.bytes[1] != event.m.bytes[1]) continue;
+							//Skip if they're on the same tick
+							if (previousEvent.tick == event.tick) continue;
 						}
-						SteamHaptics_PlayNote(controller,channel,note,127);
+						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
 						displayPlayedNotes(channel,note);
+					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
+						//Get Channel
+						int channel = event.m.get_channel()-1;
+						//Get previous event
+						const libremidi::track_event previousEvent = *eventOnChannel[channel];
+						//Skip if the previous event wasn't note on (should always be)
+						if (previousEvent.m.get_message_type() != libremidi::message_type::NOTE_ON) continue;
+						//Get data from previous event
+						channel = previousEvent.m.get_channel()-1;
+						int note = previousEvent.m.bytes[1];
+						int velocity = previousEvent.m.bytes[2];
+						//Get pitch bend from current event
+						int pitchBend = event.m.bytes[1] << 7 + event.m.bytes[2];
+						SteamHaptics_PlayNote(controller,channel,note,velocity,pitchBend);
 					}
-					// int channel = event.m.get_channel()-1;
-					// if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-					// 	int note = static_cast<int>(event.m.bytes[1]);
-					// 	int velocity = static_cast<int>(event.m.bytes[2]);
-					// 	SteamHaptics_PlayNote(controller,channel,note,velocity);
-					// 	displayPlayedNotes(channel,note);
-					// } else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
-					// 	SteamHaptics_PlayNote(controller,channel,NOTE_STOP,0);
-					// 	displayPlayedNotes(channel,NOTE_STOP);
-					// }
-					
 				}
 			}
 		}
 	}
 
 	//Stop everything just in case
-	for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-		SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0); //Wait, this actually references the controller directly, why????????
+	for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
+		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
 	}
 	
 	std::cout <<std::endl<< "Playback completed, press any key to exit" << std::endl;
@@ -672,7 +567,7 @@ void abortSignal(int) {
 void abortPlaying(){
 	if(exitFlag) {
 		for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-			SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0);
+			SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0,0);
 		}
 	}
 
