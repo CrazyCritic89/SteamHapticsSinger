@@ -1,10 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <chrono>
+#include <thread>
 #include <cstring>
 
 #include <stdint-gcc.h>
-#include <unistd.h>
 #include <stdint.h>
 
 #include <signal.h>
@@ -503,7 +503,80 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
         return;
     }
 
-	std::cout << "Success!" << std::endl;
+	//Pre-start
+	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop" << std::endl;
+	//std::this_thread::sleep_for(std::chrono::seconds(1));
+	//TODO: make something a little more fancy here | / - \ | 
+
+	//Clock setup
+    float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
+	int currentTick = 0;
+	int endTick = static_cast<int>(r.get_end_time());
+	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
+	std::vector<size_t> eventIndex(r.tracks.size(),0);
+	//size_t eventIndex[4] = {0};
+
+	while (currentTick <= endTick) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		
+		//Advance tick
+		if(timeElapsedSince(tOrigin) > tickDuration) {
+			tOrigin = std::chrono::steady_clock::now();
+			currentTick++;
+		}
+
+		//libremidi::track_event* acceptedEvents[CHANNEL_COUNT] = {r.tracks.};
+
+		//Get MIDI data
+		for (size_t i = 0; i < r.tracks.size(); ++i) {
+		//for (const libremidi::midi_track& track : r.tracks) {
+			// std::cout << i << std::endl;
+			// std::cout << eventIndex[i] << std::endl;
+			// std::cout << r.tracks[i].size() << std::endl;
+			const libremidi::midi_track& track = r.tracks[i];
+			//if (eventIndex[i] >= track.size()) continue;
+			
+			//std::cout << r.tracks[i].size() << std::endl;
+			while (eventIndex[i] < track.size()) {
+			//for (const libremidi::track_event& event : track) {
+				//std::cout << "hi" << std::endl;
+				//If the current event hasn't happened yet, we can't do it, break out of loop
+				const libremidi::track_event& event = track[eventIndex[i]];
+				if (currentTick < event.tick) break;
+				//std::cout << currentTick << std::endl;
+				//std::cout << event.tick << std::endl;
+				//std::cout << eventIndex[i] << std::endl;
+				eventIndex[i]++;
+
+				//std::cout << "hi" << std::endl;
+
+				// int eventChannel = event.m.get_channel()-1;
+				// if (eventChannel < CHANNEL_COUNT) {
+				// 	acceptedEvents[eventChannel] = &event;
+				// }
+
+				if (!event.m.is_meta_event()) {
+					if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
+						std::cout << event.m.get_channel() << " " << static_cast<int>(event.m.bytes[1]) << std::endl;
+					}
+				}
+			}
+		}
+
+		//Play what we just got
+		/*for (int currentChannel = 0 ; currentChannel < channelCount ; currentChannel++) {
+			//const libremidi::track_event& currentEvent = *acceptedEvents[currentChannel];
+			std::cout << acceptedEvents[0]->tick << std::endl;
+			libremidi::track_event currentEvent = *acceptedEvents[currentChannel];
+			if (currentEvent.m.is_meta_event()) {
+				if (currentEvent.m.get_message_type() == libremidi::message_type::NOTE_ON) {
+					std::cout << currentEvent.m.get_channel() << " " << static_cast<int>(currentEvent.m.bytes[1]) << std::endl;
+				}
+			}
+		}*/
+
+
+	}
 	return;
 }
 
@@ -604,7 +677,7 @@ void abortPlaying(){
 
 int main(int argc, char** argv)
 {
-	std::cout <<"Steam Haptics Singer v1.12 by Crazy, based off of Steam Controller Singer by Pila"<<std::endl;
+	std::cout <<"Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila"<<std::endl;
 
 	ParamsStruct params;
 	params.intervalUSec = DEFAULT_INTERVAL_USEC;
