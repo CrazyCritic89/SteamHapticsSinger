@@ -463,6 +463,8 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick, flo
         }
     }
 
+	std::cout << "\n[Left/Right] Seek  [Space] Pause" << std::endl;
+
     //Go back up
     std::cout << "\0338" << std::flush;
 }
@@ -550,7 +552,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	displayPlayedNotes(-1,NOTE_STOP,0,100,0);
 	//std::cout << "\0337" << std::flush;
 	const char spinner[4] = {'|','/','-','\\'};
-	std::cout << "\n\n\n\n\n\n";
+	std::cout << "\n\n\n\n";
+	if (channelCount - 2) std::cout << "\n\n"; 
 	for (int i = 0; i < 9; ++i) {
 		std::cout << "\r" << spinner[i & 3] << std::flush;
 		//std::cout << i;
@@ -727,14 +730,11 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	//Stop everything just in case
 	SteamHaptics_StopNotes(controller);
 	
+	if (channelCount - 2) std::cout << "\n\n"; 
 	std::cout << "\n\n\n\n\n\n\nPlayback completed, press any key to exit" << std::endl;
 
 	return;
 }
-
-
-
-
 
 bool parseArguments(int argc, char** argv, ParamsStruct* params){
 	int c;
