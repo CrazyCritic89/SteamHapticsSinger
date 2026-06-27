@@ -308,6 +308,12 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 	return 0;
 }
 
+void SteamHaptics_StopNotes(SteamControllerInfos* controller) {
+	for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
+		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
+	}
+}
+
 /*double pitchFrequency_double(int low_note, int base_note, int high_note, int pitch_bend) {
 
 }*/
@@ -339,17 +345,21 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 	}
 #endif
 
-//Retuns 0 - none, -1 - left, 2 - space, 1 - right
+//Retuns 0 - none, -1 - left, 2 - space, 1 - right, 3 - enter
 int getPressedKey() {
 	char ch,seq1,seq2;
 	#ifdef __linux__
 		#define KEY_LEFT  'D'
 		#define KEY_RIGHT 'C'
 		#define KEY_SPACE ' '
+		#define KEY_ENTER '\n'
 		if (isKeyInBuffer()) {
 			std::cin.get(ch);
 			if (ch == KEY_SPACE) {
 				return 2;
+			}
+			else if (ch == KEY_ENTER) {
+				return 3;
 			}
 			else if (ch == '\x1b') {
 				char seq1, seq2;
@@ -374,11 +384,15 @@ int getPressedKey() {
 		#define KEY_LEFT  75
 		#define KEY_RIGHT 77
 		#define KEY_SPACE 32
+		#define KEY_ENTER 13
 		if (_kbhit()) {
 			ch = _getch();
 			
 			if (ch == KEY_SPACE) {
 				return 2;
+			}
+			else if (ch == KEY_ENTER) {
+				return 3;
 			}
 			else if (ch == 0 || ch == 224) {
 				seq1 = _getch();
@@ -396,7 +410,7 @@ int getPressedKey() {
 	return 0;
 }
 
-void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
+void displayPlayedNotes(int channel, int note, int currentTick, int endTick, float tempo) {
     static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"Left Rumble    : ",
                                                  "Right Rumble   : ",
@@ -414,7 +428,7 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
 	}
 
     //Save position
-    std::cout << "\x1b[s" << std::flush;
+    std::cout << "\0337" << std::flush;
 
     for (int i = 0; i < channelCount; ++i) {
         std::cout << textPerChannel[(i + channelCount) & 3];
@@ -430,6 +444,12 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
         std::cout << std::endl;
     }
 
+	std::cout << "\nTempo: ";
+	if (tempo) {
+		std::cout << tempo;
+	}
+	std::cout << std::endl;
+
     const int pos = PROGRESS_BAR_LENGTH * currentTick / (endTick + 1);
     for (int i = 0; i < PROGRESS_BAR_LENGTH; ++i) {
         if (i < pos) {
@@ -444,7 +464,7 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
     }
 
     //Go back up
-    std::cout << "\x1b[u" << std::flush;
+    std::cout << "\0338" << std::flush;
 }
 
 void displayPlayedNotes_old(int channel, int8_t note){
@@ -519,22 +539,33 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	enableRawMode();
 	#endif
 
-	//Pre-start
-	std::cout << "Starting playback of " << params.midiSong  << "... press Enter anytime to stop\n" << std::endl;
-	//TODO: make something a little more fancy here | / - \ | 
-
 	//Now try to stop notes on exit
 	exitFlag = true;
 
 	//Hide cursor
-	std::cout << "\x1b[?25l" << std::flush;
+	std::cout << "\033[?25l" << std::flush;
 
-	std::this_thread::sleep_for(std::chrono::seconds(1));
+	//Pre-start
+	std::cout << "Starting playback of " << params.midiSong  << "... press Enter anytime to stop\n" << std::endl;
+	displayPlayedNotes(-1,NOTE_STOP,0,100,0);
+	//std::cout << "\0337" << std::flush;
+	const char spinner[4] = {'|','/','-','\\'};
+	std::cout << "\n\n\n\n\n\n";
+	for (int i = 0; i < 9; ++i) {
+		std::cout << "\r" << spinner[i & 3] << std::flush;
+		//std::cout << i;
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	}
+	std::cout << "\0338" << std::flush;
+	
+
+	//Wait a sec TODO: make something a little more fancy here | / - \ | 
+	//std::this_thread::sleep_for(std::chrono::seconds(1));
 
 	//Clock setup
 	long beatDuration = 60'000'000 / r.startingTempo;
 	float tempo = 60 * 1'000'000 / beatDuration;
-	std::cout << "Tempo: " << tempo << std::endl;
+	//std::cout << "Tempo: " << tempo << std::endl;
     std::chrono::nanoseconds tickDuration(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
 	//float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
 	int currentTick = 0;
@@ -556,7 +587,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 				currentTick += 10 * r.ticksPerBeat * key;
 				if (currentTick < 0) {
 					currentTick = 0;
-					displayPlayedNotes(-1,NOTE_STOP,0,100);
+					displayPlayedNotes(-1,NOTE_STOP,0,100,tempo);
 					//std::cout << "hi" << std::endl;
 				}
 				else if (currentTick >= endTick) {
@@ -565,13 +596,17 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 				for (int i = 0; i < CHANNEL_COUNT; ++i) {
 					eventOnChannel[i] = nullptr;
 				}
-				//const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {};
 				trackIndex.assign(r.tracks.size(),0);
-				//Wait a second so it won't be pushing this too hard
+				stuckTick = currentTick;
+				SteamHaptics_StopNotes(controller);
+				displayPlayedNotes(-1,NOTE_STOP,currentTick,endTick,tempo);
 				break;
 			case 2:
 				playing = !playing;
 				stuckTick = currentTick;
+				break;
+			case 3:
+				currentTick = endTick+1;
 				break;
 		}
 
@@ -582,6 +617,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 			currentTick += tickAmount;
 			tOrigin += tickDuration * tickAmount;
 		}
+
+		//Check if we went over, since we're done if we did
+		if (currentTick > endTick) break;
 
 		if (playing) {
 
@@ -617,15 +655,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 						//Set note
 						int note = NOTE_STOP;
 						int velocity = 0;
-
-						//Check if note on
-						if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
-							note = event.m.bytes[1];
-							velocity = event.m.bytes[2];
-							eventOnChannel[channel] = &event;
-
-						//Check if event is note off
-						} else if (event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
+						
+						//Check if note off or velocity 0
+						if (event.m.bytes[2] == 0 || event.m.get_message_type() == libremidi::message_type::NOTE_OFF) {
 
 							//Get previous event
 							//Make sure it's not null
@@ -639,11 +671,20 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 							if (previousEvent.m.bytes[1] != event.m.bytes[1]) continue;
 
 							//Skip if they're on the same tick
-							//if (previousEvent.tick == event.tick) continue;
+							if (previousEvent.tick == event.tick) continue;
+						
+						} 
+						//Check if note on
+						else if (event.m.get_message_type() == libremidi::message_type::NOTE_ON) {
+							note = event.m.bytes[1];
+							velocity = event.m.bytes[2];
+							eventOnChannel[channel] = &event;
 						}
 
+						if (currentTick - r.ticksPerBeat < event.tick) {
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
-						displayPlayedNotes(channel,note,currentTick,endTick);
+						displayPlayedNotes(channel,note,currentTick,endTick,tempo);
+						}
 
 					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
 
@@ -678,20 +719,15 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 			}
 		}
 		} else {
-			//Stop everything just in case
-			for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
-				SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
-			}
+			SteamHaptics_StopNotes(controller);
 			currentTick = stuckTick;
 		}
 	}
 
 	//Stop everything just in case
-	for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
-		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
-	}
+	SteamHaptics_StopNotes(controller);
 	
-	std::cout << "\n\n\n\n\n\nPlayback completed, press any key to exit" << std::endl;
+	std::cout << "\n\n\n\n\n\n\nPlayback completed, press any key to exit" << std::endl;
 
 	return;
 }
@@ -782,9 +818,7 @@ void abortPlaying(){
 	std::cout << "\x1b[?25h" << std::flush;
 
 	if(exitFlag) {
-		for(int i = 0 ; i < CHANNEL_COUNT ; i++){
-			SteamHaptics_PlayNote(&steamController1,i,NOTE_STOP,0,0);
-		}
+		SteamHaptics_StopNotes(&steamController1);
 	}
 
 	SteamController_Close(&steamController1);
