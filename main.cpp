@@ -79,7 +79,10 @@ SteamControllerInfos steamController1;
 hid_device* open_steam_controller_hid(uint16_t pid) {
 	unsigned char buf[64];
 	struct hid_device_info *devs = hid_enumerate(VALVE_VID, pid);
-	if (devs != NULL) std::cout << "Attempting to find Steam Controller (2026)..."<<std::endl;
+	if (devs == NULL) return NULL;
+	if (pid == STEAM_CONTROLLER_2026) std::cout << "\rAttempting to find wired Steam Controller (2026)... ";
+	else if (pid == STEAM_PUCK) std::cout << "\rFound Steam Puck, attempting to find first Steam Controller (2026)... ";
+	else std::cout << "\rAttempting to find Valve device...";
 	hid_device* handle = NULL;
 	int r;
 	for (struct hid_device_info *cur = devs; cur != NULL; cur = cur->next) {
@@ -119,12 +122,12 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		controller->type = ControllerType::Original;
 	} 
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_CONTROLLER_2026)) != NULL) { // Steam Controller (2026)
-		std::cout<<"Found wired Steam Controller (2026)"<<std::endl;
+		std::cout<<"OK"<<std::endl;
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
 	}
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_PUCK)) != NULL) { // Steam Puck
-		std::cout<<"Found Steam Puck, using first Steam Controller (2026)"<<std::endl;
+		std::cout<<"OK"<<std::endl;
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
 	}
@@ -535,6 +538,11 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
     if (result == libremidi::reader::invalid) {
         std::cout << "Invalid MIDI file!" << std::endl;
         return;
+    }
+
+	if (strstr(params.midiSong,"_dv")) {
+        std::cout << "Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
+		directVel = true;
     }
 
 	#ifdef __linux__
