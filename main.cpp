@@ -188,7 +188,6 @@ int8_t gainSlide(const int8_t (&gainCurveRef)[128], int note, int pitch_bend) {
 
 //Steam Haptics Playblack
 int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int note, int velocity, int pitch_bend){
-	return 1;
 	if (channel > 1 && controller->type != ControllerType::Triton) return 1;
 	unsigned char dataBlob[64] = {0};
 	
@@ -319,7 +318,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 	struct termios orig_termios;
 
 	void disableRawMode() {
-	tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+		tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
 	}
 
 	void enableRawMode() {
@@ -344,9 +343,9 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 int getPressedKey() {
 	char ch,seq1,seq2;
 	#ifdef __linux__
-	#define KEY_LEFT  'D'
-	#define KEY_RIGHT 'C'
-	#define KEY_SPACE ' '
+		#define KEY_LEFT  'D'
+		#define KEY_RIGHT 'C'
+		#define KEY_SPACE ' '
 		if (isKeyInBuffer()) {
 			std::cin.get(ch);
 			if (ch == KEY_SPACE) {
@@ -408,6 +407,11 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick) {
     if (channel >= 0 && channel < channelCount) {
         notePerChannel[channel ^ 1 ^ (tritonSwap * 2)] = note;
     }
+	else if (channel == -1) {
+		for (int i = 0; i < channelCount; ++i) {
+			notePerChannel[i] = NOTE_STOP;
+		}
+	}
 
     //Save position
     std::cout << "\x1b[s" << std::flush;
@@ -475,6 +479,10 @@ void displayPlayedNotes_old(int channel, int8_t note){
 	std::cout.flush();
 }
 
+/*void fixPos(libremidi::reader* r, std::vector<size_t>* trackIndex, const libremidi::track_event** eventOnChannel) {
+
+}*/
+
 void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	//Load MIDI file
 	std::ifstream file{params.midiSong, std::ios::binary | std::ios::ate};
@@ -507,16 +515,21 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
         return;
     }
 
-	//Hide cursor
-	std::cout << "\x1b[?25l" << std::flush;
+	#ifdef __linux__
+	enableRawMode();
+	#endif
 
 	//Pre-start
-	std::cout << "Starting playback of " << params.midiSong  << "... press Ctrl+C anytime to stop\n" << std::endl;
-	std::this_thread::sleep_for(std::chrono::seconds(1));
+	std::cout << "Starting playback of " << params.midiSong  << "... press Enter anytime to stop\n" << std::endl;
 	//TODO: make something a little more fancy here | / - \ | 
 
 	//Now try to stop notes on exit
 	exitFlag = true;
+
+	//Hide cursor
+	std::cout << "\x1b[?25l" << std::flush;
+
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 
 	//Clock setup
 	long beatDuration = 60'000'000 / r.startingTempo;
@@ -526,12 +539,41 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	//float tickDuration = 60.0 / r.startingTempo / r.ticksPerBeat;
 	int currentTick = 0;
 	int endTick = static_cast<int>(r.get_end_time());
+	bool playing = true;
+	int stuckTick;
 	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
 	std::vector<size_t> trackIndex(r.tracks.size(),0);
-	const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {};
+	const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {nullptr};
 
 	while (currentTick <= endTick) {
 		std::this_thread::sleep_for(std::chrono::microseconds(params.intervalUSec));
+
+		//Check for input
+		int key = getPressedKey();
+		switch (key) {
+			case -1:
+			case 1:
+				currentTick += 10 * r.ticksPerBeat * key;
+				if (currentTick < 0) {
+					currentTick = 0;
+					displayPlayedNotes(-1,NOTE_STOP,0,100);
+					//std::cout << "hi" << std::endl;
+				}
+				else if (currentTick >= endTick) {
+					currentTick = endTick-r.ticksPerBeat;
+				}
+				for (int i = 0; i < CHANNEL_COUNT; ++i) {
+					eventOnChannel[i] = nullptr;
+				}
+				//const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {};
+				trackIndex.assign(r.tracks.size(),0);
+				//Wait a second so it won't be pushing this too hard
+				break;
+			case 2:
+				playing = !playing;
+				stuckTick = currentTick;
+				break;
+		}
 
 		//Accumulate tick
 		std::chrono::steady_clock::time_point tNow = std::chrono::steady_clock::now();
@@ -540,6 +582,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 			currentTick += tickAmount;
 			tOrigin += tickDuration * tickAmount;
 		}
+
+		if (playing) {
 
 		//Get MIDI data
 		for (size_t i = 0; i < r.tracks.size(); ++i) {
@@ -558,7 +602,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 						beatDuration = ((((uint32_t)event.m.bytes[3]) << 16) + (event.m.bytes[4] << 8) + event.m.bytes[5]);
 						tickDuration = static_cast<std::chrono::nanoseconds>(static_cast<long>(beatDuration * 1'000 / r.ticksPerBeat));
 						tempo = 60 * 1'000'000 / beatDuration;
-						std::cout << "Tempo: " << tempo << std::endl;
+						//std::cout << "Tempo: " << tempo << std::endl;
 					}
 				} else {
 					//This needs more work, we need to check if the NOTE OFF matches the previous NOTE ON depending on channel, and by default be NOTE OFF until set otherwise
@@ -595,7 +639,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 							if (previousEvent.m.bytes[1] != event.m.bytes[1]) continue;
 
 							//Skip if they're on the same tick
-							if (previousEvent.tick == event.tick) continue;
+							//if (previousEvent.tick == event.tick) continue;
 						}
 
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
@@ -632,6 +676,13 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 					}
 				}
 			}
+		}
+		} else {
+			//Stop everything just in case
+			for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
+				SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
+			}
+			currentTick = stuckTick;
 		}
 	}
 
@@ -740,7 +791,9 @@ void abortPlaying(){
 
 	#ifdef __linux__
 	disableRawMode();
-	#endif 
+	#endif
+
+	std::cout << std::flush;
 
 	libusb_exit(NULL);
 	hid_exit();
@@ -750,15 +803,11 @@ int main(int argc, char** argv)
 {
 	std::cout <<"Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila"<<std::endl;
 
-	#ifdef __linux__
-	enableRawMode();
-	#endif
-
-	while (true) {
+	/*while (true) {
 		std::this_thread::sleep_for(std::chrono::microseconds(10000));
 		int a = getPressedKey();
 		if (a) std::cout << a << std::endl;
-	}
+	}*/
 
 	ParamsStruct params;
 	params.intervalUSec = DEFAULT_INTERVAL_USEC;
