@@ -1,24 +1,30 @@
 #include <iostream>
 #include <fstream>
+
 #include <chrono>
 #include <thread>
 
 #include <cstring>
-#include <cmath>
-
-#include <stdint-gcc.h>
-#include <stdint.h>
-
+#include <getopt.h>
 #include <signal.h>
-#include <stdio.h>
+#include <cstdlib>
 
 #include <hidapi.h>
 #include <libusb.h>
+#include <libremidi/libremidi.hpp>
 #include <libremidi/reader.hpp>
+
+#ifdef _WIN32
+#include <conio.h>
+
+HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+CONSOLE_SCREEN_BUFFER_INFO csbi;
+COORD savedPosition = {-1,-1};
+#endif 
 
 #define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 	495483.0
 #define CHANNEL_COUNT						  	4
-#define DEFAULT_INTERVAL_USEC				   	10000
+#define DEFAULT_INTERVAL_USEC				   	5000
 
 #define DURATION_MAX			-1
 #define NOTE_STOP		   		-1
@@ -34,6 +40,17 @@
 #define STEAM_PUCK				0x1304
 #define STEAM_DECK				0x1205
 
+#ifdef _WIN32 
+
+/*void enableANSI() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    GetConsoleMode(hOut, &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+}*/
+#endif
+
 const double midiFrequency[128]  = {0, 8.662, 9.177, 9.723, 10.301, 10.913, 11.562, 12.250, 12.978, 13.750, 14.568, 15.434, 16.352, 17.324, 18.354, 19.445, 20.602, 21.827, 23.125, 24.500, 25.957, 27.500, 29.135, 30.868, 32.703, 34.648, 36.708, 38.891, 41.203, 43.654, 46.249, 48.999, 51.913, 55.000, 58.270, 61.735, 65.406, 69.296, 73.416, 77.782, 82.407, 87.307, 92.499, 97.999, 103.826, 110.000, 116.541, 123.471, 130.813, 138.591, 146.832, 155.563, 164.814, 174.614, 184.997, 195.998, 207.652, 220.000, 233.082, 246.942, 261.626, 277.183, 293.665, 311.127, 329.628, 349.228, 369.994, 391.995, 415.305, 440.000, 466.164, 493.883, 523.251, 554.365, 587.330, 622.254, 659.255, 698.456, 739.989, 783.991, 830.609, 880.000, 932.328, 987.767, 1046.502, 1108.731, 1174.659, 1244.508, 1318.510, 1396.913, 1479.978, 1567.982, 1661.219, 1760.000, 1864.655, 1975.533, 2093.005, 2217.461, 2349.318, 2489.016, 2637.020, 2793.826, 2959.955, 3135.963, 3322.438, 3520.000, 3729.310, 3951.066, 4186.009, 4434.922, 4698.636, 4978.032, 5274.041, 5587.652, 5919.911, 6271.927, 6644.875, 7040.000, 7458.620, 7902.133, 8372.018, 8869.844, 9397.273, 9956.063, 10548.082, 11175.303, 11839.822, 12543.854};
 const uint16_t midiFrequencyDk[128] = {440};
 const uint16_t midiFrequencyRb[128] = {0, 10, 10, 11, 11, 12, 13, 13, 14, 15, 16, 16, 17, 18, 19, 20, 22, 23, 24, 25, 27, 29, 30, 32, 34, 36, 38, 40, 42, 45, 47, 50, 53, 56, 59, 63, 66, 70, 75, 80, 84, 89, 94, 100, 107, 113, 120, 126, 134, 142, 151, 160, 169, 179, 189, 200, 213, 226, 239, 253, 267, 283, 300, 318, 336, 357, 377, 399, 423, 449, 477, 505, 535, 566, 598, 636, 674, 713, 756, 800, 848, 898, 951, 1008, 1068, 1131, 1199, 1270, 1345, 1425, 1510, 1600, 1693, 1792, 1897, 2008, 2125, 2249, 2381, 2521, 2669, 2826, 2992, 3168, 3354, 3552, 3761, 3983, 4218, 4467, 4731, 5010, 5306, 5620, 5952, 6304, 6677, 7072, 7491, 7934, 8404, 8902, 9429, 9988, 10580, 11207, 11872, 12576};
@@ -44,10 +61,11 @@ const int8_t gainCurveRb[128] = {DEFAULT_GAIN};
 const int8_t gainCurveTr[128] = {DEFAULT_GAIN};
 
 struct ParamsStruct{
-	const char* midiSong;
+	const char* midiInput;
 	unsigned int intervalUSec;
 	int libusbDebugLevel;
 	bool repeatSong;
+	bool realTime;
 };
 
 //TEMPORARY, move to ParamsStruct and find a way to reference within playback function
@@ -58,6 +76,7 @@ bool exitFlag = false;
 int channelCount = 4;
 int gainModifier[5] = {0};
 bool noGainCurve = false;
+int consoleType = 0; //Specifies what to use, 0 is legacy playback display, 1 is ANSI, 2 is Win32 API
 
 enum class ControllerType {
 	None,
@@ -236,7 +255,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			std::cout<<"\nCommand Error "<<libusb_error_name(r)<<std::endl;
 			exitFlag = false;
 			std::cin.ignore();
-			exit(0);
+			exit(1);
 		}
 		break;
 
@@ -273,7 +292,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			wprintf(L"\nCommand Error %ls\n", hid_error(controller->hid_handle));
 			exitFlag = false;
 			std::cin.ignore();
-			exit(0);
+			exit(1);
 		}
 		break;
 
@@ -302,7 +321,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			std::cout<<"\nCommand Error "<<libusb_error_name(r)<<std::endl;
 			exitFlag = false;
 			std::cin.ignore();
-			exit(0);
+			exit(1);
 		}
 		break;
 	
@@ -312,8 +331,10 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 }
 
 void SteamHaptics_StopNotes(SteamControllerInfos* controller) {
+	if (exitFlag) {
 	for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
 		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
+	}
 	}
 }
 
@@ -383,7 +404,7 @@ int getPressedKey() {
 			}
 		}
 	#elif defined(_WIN32)
-		#include <conio.h>
+		
 		#define KEY_LEFT  75
 		#define KEY_RIGHT 77
 		#define KEY_SPACE 32
@@ -413,7 +434,7 @@ int getPressedKey() {
 	return 0;
 }
 
-void displayPlayedNotes(int channel, int note, int currentTick, int endTick, float tempo) {
+void displayPlayedNotes(int channel, int note) {
     static int8_t notePerChannel[CHANNEL_COUNT] = {NOTE_STOP, NOTE_STOP, NOTE_STOP, NOTE_STOP};
 	const char* textPerChannel[CHANNEL_COUNT] = {"Left Rumble    : ",
                                                  "Right Rumble   : ",
@@ -430,8 +451,29 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick, flo
 		}
 	}
 
-    //Save position
-    std::cout << "\0337" << std::flush;
+	#ifdef __linux__
+
+	static bool savedPos = false;
+	if (!savedPos) {
+		//Save position
+    	std::cout << "\0337" << std::flush;
+	} else {
+		//Go back up
+    	std::cout << "\0338" << std::flush;
+	}
+
+	#elif defined(_WIN32)
+
+	if (savedPosition.X == -1) {
+		//Save position
+		GetConsoleScreenBufferInfo(hConsole, &csbi);
+		savedPosition = csbi.dwCursorPosition;
+	} else {
+		//Go back up
+    	SetConsoleCursorPosition(hConsole, savedPosition);
+	}
+
+	#endif
 
     for (int i = 0; i < channelCount; ++i) {
         std::cout << textPerChannel[(i + channelCount) & 3];
@@ -444,14 +486,16 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick, flo
 			int octave = (notePerChannel[i]/12)-1;
 			std::cout << octave;
         }
-        std::cout << std::endl;
+        std::cout << "\n";
     }
+}
 
+void displayProgressBar(int currentTick, int endTick, float tempo) {
 	std::cout << "\nTempo: ";
 	if (tempo) {
 		std::cout << tempo;
 	}
-	std::cout << std::endl;
+	std::cout << "\n";
 
     const int pos = PROGRESS_BAR_LENGTH * currentTick / (endTick + 1);
     for (int i = 0; i < PROGRESS_BAR_LENGTH; ++i) {
@@ -466,10 +510,7 @@ void displayPlayedNotes(int channel, int note, int currentTick, int endTick, flo
         }
     }
 
-	std::cout << "\n[Left/Right] Seek  [Space] Pause" << std::endl;
-
-    //Go back up
-    std::cout << "\0338" << std::flush;
+	std::cout << "\n[Left/Right] Seek  [Space] Pause\n";
 }
 
 void displayPlayedNotes_old(int channel, int8_t note){
@@ -477,8 +518,7 @@ void displayPlayedNotes_old(int channel, int8_t note){
 	const char* textPerChannel[CHANNEL_COUNT] = {"LEFT haptic : ",", RIGHT haptic : ",", LEFT haptic : ",", RIGHT haptic : "};
 	const char* noteBaseNameArray[12] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
 
-	if(channel >= channelCount)
-		return;
+	if(channel >= channelCount) return;
 
 	notePerChannel[(channel < 2) ? !channel : !(channel-2)+2] = note;
 
@@ -504,16 +544,12 @@ void displayPlayedNotes_old(int channel, int8_t note){
 	std::cout.flush();
 }
 
-/*void fixPos(libremidi::reader* r, std::vector<size_t>* trackIndex, const libremidi::track_event** eventOnChannel) {
-
-}*/
-
-void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
+void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 	//Load MIDI file
-	std::ifstream file{params.midiSong, std::ios::binary | std::ios::ate};
+	std::ifstream file{params->midiInput, std::ios::binary | std::ios::ate};
     if (!file.is_open())
     {
-        std::cout << "Could not open " << params.midiSong << std::endl;
+        std::cout << "Could not open " << params->midiInput << std::endl;
         return;
     }
 
@@ -539,6 +575,11 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
         std::cout << "Invalid MIDI file!" << std::endl;
         return;
     }
+	
+	if (strstr(params->midiInput,"_dv")) {
+        std::cout << "Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
+		directVel = true;
+    }
 
 	if (strstr(params.midiSong,"_dv")) {
         std::cout << "Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
@@ -556,18 +597,18 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	std::cout << "\033[?25l" << std::flush;
 
 	//Pre-start
-	std::cout << "Starting playback of " << params.midiSong  << "... press Enter anytime to stop\n" << std::endl;
-	displayPlayedNotes(-1,NOTE_STOP,0,100,0);
-	//std::cout << "\0337" << std::flush;
+	std::cout << "Starting playback of " << params->midiInput  << "... press Enter anytime to stop\n\n";
+	displayPlayedNotes(-1,NOTE_STOP);
+	displayProgressBar(0,100,0);
+    displayPlayedNotes(-1,NOTE_STOP);
+	std::cout << "\n\n";
 	const char spinner[4] = {'|','/','-','\\'};
-	std::cout << "\n\n\n\n";
-	if (channelCount - 2) std::cout << "\n\n"; 
 	for (int i = 0; i < 9; ++i) {
 		std::cout << "\r" << spinner[i & 3] << std::flush;
-		//std::cout << i;
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
-	std::cout << "\0338" << std::flush;
+
+	displayPlayedNotes(-1,NOTE_STOP);
 	
 
 	//Wait a sec TODO: make something a little more fancy here | / - \ | 
@@ -588,7 +629,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {nullptr};
 
 	while (currentTick <= endTick) {
-		std::this_thread::sleep_for(std::chrono::microseconds(params.intervalUSec));
+		std::this_thread::sleep_for(std::chrono::microseconds(params->intervalUSec));
 
 		//Check for input
 		int key = getPressedKey();
@@ -598,7 +639,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 				currentTick += 10 * r.ticksPerBeat * key;
 				if (currentTick < 0) {
 					currentTick = 0;
-					displayPlayedNotes(-1,NOTE_STOP,0,100,tempo);
+					displayPlayedNotes(-1,NOTE_STOP);
+					displayProgressBar(0,100,tempo);
 					//std::cout << "hi" << std::endl;
 				}
 				else if (currentTick >= endTick) {
@@ -610,7 +652,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 				trackIndex.assign(r.tracks.size(),0);
 				stuckTick = currentTick;
 				SteamHaptics_StopNotes(controller);
-				displayPlayedNotes(-1,NOTE_STOP,currentTick,endTick,tempo);
+				displayPlayedNotes(-1,NOTE_STOP);
+				displayProgressBar(currentTick,endTick,tempo);
 				break;
 			case 2:
 				playing = !playing;
@@ -694,7 +737,8 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 
 						if (currentTick - r.ticksPerBeat < event.tick) {
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
-						displayPlayedNotes(channel,note,currentTick,endTick,tempo);
+						displayPlayedNotes(channel,note);
+						displayProgressBar(currentTick,endTick,tempo);
 						}
 
 					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
@@ -738,15 +782,104 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params) {
 	//Stop everything just in case
 	SteamHaptics_StopNotes(controller);
 	
-	if (channelCount - 2) std::cout << "\n\n"; 
-	std::cout << "\n\n\n\n\n\n\nPlayback completed, press any key to exit" << std::endl;
+	//if (channelCount - 2) std::cout << "\n\n"; 
+	std::cout << "\nPlayback completed, press any key to exit";
 
 	return;
 }
 
+void playRealTime(SteamControllerInfos* controller, const ParamsStruct* params) {
+	std::cout << "Starting real-time MIDI... press Ctrl+C anytime to stop\n";
+	
+	auto my_callback = [&](const libremidi::message& message) {
+		static int noteOnChannel[CHANNEL_COUNT][3] = {{NOTE_STOP,0,-1}};
+		if (message.is_note_on_or_off()) {
+						
+			//Get Channel
+			int channel = message.get_channel()-1;
+
+			//Skip if channel out of range
+			if (channel >= channelCount) return;
+						
+			//Set note
+			int note = NOTE_STOP;
+			int velocity = 0;
+						
+			//Check if note off or velocity 0
+			if (message.bytes[2] == 0 || message.get_message_type() == libremidi::message_type::NOTE_OFF) {
+
+				//Get previous event
+				//Make sure it's not null
+				if (noteOnChannel[channel][0] == -1) return;
+				//const libremidi::message previousMesg = messageOnChannel[channel];
+
+				//Skip if the previous event wasn't note on (should always be)
+				//if (message.get_message_type() != libremidi::message_type::NOTE_ON) return;
+
+				//Skip if the notes don't match
+				if (noteOnChannel[channel][0] != message.bytes[1]) return;
+
+				//Skip if they're on the same tick
+				//if (previousEvent.tick == event.tick) continue;
+			
+			} 
+		//Check if note on
+		else if (message.get_message_type() == libremidi::message_type::NOTE_ON) {
+			note = message.bytes[1];
+			velocity = message.bytes[2];
+		}
+
+		noteOnChannel[channel][0] = note;
+		noteOnChannel[channel][1] = velocity;
+		SteamHaptics_PlayNote(controller,channel,note,velocity,0);
+		displayPlayedNotes(channel,note);
+		}
+	};
+
+	// Create the midi object
+	libremidi::midi_in midi{ 
+	libremidi::input_configuration{ .on_message = my_callback } 
+	};
+
+	libremidi::observer obs;
+	for(const libremidi::input_port& port : obs.get_input_ports()) {
+		
+		#ifdef __linux__
+  		if (port.port_name == params->midiInput) {
+		#elif defined(_WIN32)
+		if (port.port_name == ((params->midiInput[0]) ? params->midiInput : "loopMIDI Port")) {
+		#endif
+			std::cout << "Using \"" << port.port_name << "\"\n\n";
+			displayPlayedNotes(-1,NOTE_STOP);
+			midi.open_port(port);
+		}
+	}
+	if (!midi.is_port_open()) {
+		std::cout << "MIDI port failure! ";
+		if (params->midiInput[0]) {
+			std::cout << "Unable to open " << params->midiInput << "\n";
+		}
+		#ifdef _WIN32 
+		else {
+			std::cout << "Attempted to open loopMIDI Port but failed. Unless you're using a different MIDI device, please install loopMIDI to use real-time.\n";
+		}
+		#endif
+		exitFlag = false;
+		//std::cin.ignore();
+		std::exit(1);
+	}
+		
+
+	//if(auto port = )
+	while(true) {
+		std::this_thread::sleep_for(std::chrono::microseconds(params->intervalUSec));
+	}
+}
+
 bool parseArguments(int argc, char** argv, ParamsStruct* params){
 	int c;
-	while ( (c = getopt(argc, argv, "l:r:n:m:d:i:pvuts")) != -1) {
+	bool readyState = false;
+	while ( (c = getopt(argc, argv, "l:r:n:m:d:i:pvutseh")) != -1) {
 		int32_t value;
 		switch(c){
 		case 'l':
@@ -800,6 +933,11 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 		case 's':
 			tritonSwap = true;
 			break;
+		case 'e':
+			params->realTime = true;
+			readyState = true;
+			break;
+		case 'h':
 		case '?':
 			return false;
 			break;
@@ -808,22 +946,20 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 		}
 	}
 	if(optind == argc-1 ){
-		params->midiSong = argv[optind];
-		return true;
+		params->midiInput = argv[optind];
+		readyState = true;
 	}
-	else{
-		return false;
-	}
+	return readyState;
 }
 
 void abortSignal(int) {
-	std::cout << "\nAborted " << std::endl;
+	std::cout << "\nAborted";
 	std::cout.flush();
 	exit(1);
 }
 
-void abortPlaying(){
-	std::cout << "\x1b[?25h" << std::flush;
+void doExit(){
+	//std::cout << "\033[?25h" << std::flush;
 
 	if(exitFlag) {
 		SteamHaptics_StopNotes(&steamController1);
@@ -835,15 +971,17 @@ void abortPlaying(){
 	disableRawMode();
 	#endif
 
-	std::cout << std::flush;
+	//std::cout << std::flush;
 
 	libusb_exit(NULL);
 	hid_exit();
+
+	//std::cin.ignore();
 }
 
 int main(int argc, char** argv)
 {
-	std::cout <<"Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila"<<std::endl;
+	
 
 	/*while (true) {
 		std::this_thread::sleep_for(std::chrono::microseconds(10000));
@@ -855,26 +993,36 @@ int main(int argc, char** argv)
 	params.intervalUSec = DEFAULT_INTERVAL_USEC;
 	params.libusbDebugLevel = LIBUSB_LOG_LEVEL_NONE;
 	params.repeatSong = false;
-	params.midiSong = "\0";
+	params.midiInput = "\0";
+	params.realTime = false;
 
 	//Parse arguments
 	if(!parseArguments(argc, argv, &params)){
-		std::cout << "Usage: steam-haptics-singer [-lMODIFIER] [-rMODIFIER] [-nMODIFIER] [-mMODIFIER] [-iINTERVAL] [-dDEBUG_LEVEL] [-p] [-v] [-u] [-t] [-s] MIDI_FILE\n"
+		std::cout << 
+				"Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila\n"
+			    "Usage: steam-haptics-singer [-lMODIFIER] [-rMODIFIER] [-nMODIFIER] [-mMODIFIER] [-iINTERVAL] [-dDEBUG_LEVEL] [-p] [-v] [-u] [-t] [-s] MIDI_FILE\n"
 			  "\nThere must be no space for negative gain modifiers"
 			  "\n  -lMODIFIER		Left trackpad gain modifier"
 			  "\n  -rMODIFIER		Right trackpad gain modifier"
 			  "\n  -nMODIFIER		Left rumble gain modifier"
 			  "\n  -mMODIFIER		Right rumble gain modifier "
-			  "\n  -iINTERVAL		Player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point going lower won't improve any more. Default value is 10000"
+			  "\n  -iINTERVAL		Player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point going lower won't improve any more. Default value is 5000"
 			  "\n  -dDEBUG_LEVEL		Libusb debug level. Default is 0, no debug output. Max is 4, max verbosity output"
 		      "\n  -p	Repeat song, plays again after ending"
 			  "\n  -v 	Direct velocity to gain control, the MIDI file will set the gain"
 			  "\n  -u	No gain curve, all notes use (signed) 0x00 gain"
 			  "\n  -t	(Steam Controller 2026 Only) Limit to only two channels"
 			  "\n  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
-				"" << std::endl;
+			  "\n  -e	Real-time MIDI"
+			  "\n  -q	No re-tuned frequencies"
+			  "\n";
 		return 1;
+		//-left=0 -right=0 -tleft -tright -interval -debug -repeat -directvel -nogain -limit -swap -realtime -noretune -
 	}
+
+	//std::cout << "\033[?25l\033[2J\033[H" << std::flush;
+	std::cout << "\033c\033[H" << std::flush;
+	std::cout << "Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila\n";
 
 
 	//Initializing LIBUSB
@@ -901,13 +1049,23 @@ int main(int argc, char** argv)
 
 	//Set mecanism to stop playing when closing process
 	signal(SIGINT, abortSignal);
-	atexit(abortPlaying);
+	atexit(doExit);
+
+	//DWORD dwMode = 0;
+	//if (!GetConsoleMode(hConsole,&dwMode)) return 1;
+	//dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+	//SetConsoleMode(hConsole,dwMode);
 
 	//Playing song
-	do{
-		playSong(&steamController1,params);
-	}while(params.repeatSong);
+	if (params.realTime) {
+		playRealTime(&steamController1,&params);
+	} else {
+		do{
+			playSong(&steamController1,&params);
+		}while(params.repeatSong);
+	}
 
-	std::cin.ignore();
+	std::cout << "\033[?25h" << std::flush;
+
 	return 0;
 }
