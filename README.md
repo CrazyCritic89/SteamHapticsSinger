@@ -67,18 +67,18 @@ NOTE: For Steam Controller (2015), make sure the BLE firmware is NOT installed.
 
 1. [Download the latest release](https://github.com/CrazyCritic89/SteamHapticsSinger/releases) (the Linux build is the one with no file extension)
 2. Turn on your Steam Controller (2015 or 2026) or Steam Deck
-3. Drag and drop MIDI file onto the program. On Linux, you might need to make it executable first by going into the properties. If this doesn't work, then try:
+3. Drag and drop a MIDI or MP3 file onto the program. On Linux, you might need to make it executable first by going into the properties. If this doesn't work, then try:
 
 #### On Linux
 1. Right click inside the folder
 2. Click "Open in Terminal" 
 3. Type `chmod +x steam-haptics-singer` to make the program executable
-4. Type `./steam-haptics-singer [name of your midi file]` to run
+4. Type `./steam-haptics-singer [name of your midi or mp3 file]` to run
 5. Enjoy!
 #### On Windows
 1. Click the open space in the folder path at the top in file explorer
 2. Type in "cmd"
-3. Type `steam-haptics-singer.exe [name of your midi file]` to run
+3. Type `steam-haptics-singer.exe [name of your midi or mp3 file]` to run
 4. Enjoy!
 
 ### Where can I find midi songs?
@@ -86,14 +86,44 @@ NOTE: For Steam Controller (2015), make sure the BLE firmware is NOT installed.
 Songs ready to play can be found in the original guy's [personal collection](https://mega.nz/#F!BWpEWKzB!r7WPw5bZ_domN4pk-FJsjg) (as he called it). Otherwise, you can just try a MIDI and see what happens (most of the time it won't work well).
 
 ### Usage from command prompt:
-	Usage: steam-haptics-singer [-p] [-y] [-d DEBUG_LEVEL] [-i INTERVAL] MIDI_FILE
+
+	Usage: steam-haptics-singer [-p] [-e] [-d DEBUG_LEVEL] [-i INTERVAL] [-A ALGO] MIDI_OR_MP3_FILE
 
 	  -i INTERVAL		Player sleep interval (in microseconds). Lower generally means better song fidelity, but higher cpu usage, and at some point going lower won't improve any more. Default value is 10000
 	  -d DEBUG_LEVEL	Libusb debug level. Default is 0, no debug output. max is 4, max verbosity output
 	  -p	Repeat song, plays again after ending
-	  -e 	Direct velocity to gain control, the MIDI file will set the gain"
-	  -t	(Steam Controller 2026 Only) Limit to only two channels"
-	  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
+	  -e 	Direct velocity to gain control, the MIDI file will set the gain
+	  -t	(Steam Controller 2026 Only) Limit to only two channels
+	  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels
+	  -A ALGO	Pitch detection algorithm for MP3 conversion (default: yin)
+
+### MP3 support:
+
+You can pass an MP3 file directly instead of a MIDI file. The program will automatically convert it to MIDI using pitch detection before playback:
+
+	steam-haptics-singer.exe song.mp3
+
+A `song.mid` file will be created next to the MP3 and then played.
+
+The pitch detection algorithm can be selected with `-A ALGO`. All algorithms are monophonic — they work best on clean, single-note recordings (voice, whistle, single instrument).
+
+| Algorithm | Flag | Description |
+|---|---|---|
+| YIN | `yin` | Difference function with cumulative mean normalisation. Robust, good default. |
+| pYIN | `pyin` | Probabilistic YIN — weights tau candidates using a Beta distribution prior. More stable on borderline frames. |
+| McLeod (MPM) | `mpm` | Normalized Square Difference Function. Similar to YIN but peak-based instead of threshold-based. |
+| Autocorrelation | `autocorr` | Classic normalised autocorrelation peak detection. |
+| AMDF | `amdf` | Average Magnitude Difference Function — finds the lag that minimises average sample difference. |
+| HPS | `hps` | Harmonic Product Spectrum — multiplies harmonic copies of the FFT spectrum to find the fundamental. |
+| Cepstrum | `cepstrum` | Log-spectrum inverse FFT; peak quefrency gives pitch period. |
+| FFT Peak | `fftpeak` | Finds the lowest significant peak in the Hann-windowed magnitude spectrum. |
+| CQT | `cqt` | Constant-Q Transform — evaluates DFT energy at each MIDI note frequency directly. |
+| STFT | `stft` | Blackman-windowed FFT with harmonic scoring to confirm the fundamental. |
+
+Examples:
+
+	steam-haptics-singer.exe -A hps song.mp3
+	steam-haptics-singer.exe -A cqt song.mp3
 
 ### MIDI files tips:
 
@@ -111,12 +141,19 @@ MIDI files may need to be edited with a software such as [MidiEditor](https://ww
 
 You will need libusb(-dev), hidapi-hidraw, and pkgconf. If you have them, just type `make`.
 
-For Windows, it can be built with MSYS2 though you will need to change "hidapi-hidraw" to just "hidapi" in the Makefile.
+For Windows, it can be built MSYS2 with the UCRT64 shell. Install the required packages then build:
+
+	pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-libusb mingw-w64-ucrt-x86_64-hidapi
+
+You will need to change "hidapi-hidraw" to just "hidapi" in the Makefile.
 
 ### For a guide:
+
 	git clone -b master https://github.com/CrazyCritic89/SteamHapticsSinger.git
 	cd SteamHapticsSinger
 	make
+
+`make` will automatically download the [minimp3](https://github.com/lieff/minimp3) header (required for MP3 support) on first build.
 
 ## Changelog
 

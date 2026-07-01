@@ -13,6 +13,7 @@
 #include <hidapi.h>
 #include <libusb.h>
 #include "midifile/midifile.h"
+#include "midifile/mp3/Mp3ToMidi.h"
 
 #define STEAM_CONTROLLER_MAGIC_PERIOD_RATIO 495483.0
 #define CHANNEL_COUNT					   4
@@ -45,6 +46,7 @@ struct ParamsStruct{
 	unsigned int intervalUSec;
 	int libusbDebugLevel;
 	bool repeatSong;
+	PitchAlgo pitchAlgo = PitchAlgo::YIN;
 };
 
 //TEMPORARY, move to ParamsStruct and find a way to reference within playback function
@@ -148,7 +150,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 					break;
 				}
 				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
+					file1 >> gainCurveTr[i];
 					file2 >> gainCurveRb[i];
 				}
 				break;
@@ -159,7 +161,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 					break;
 				}
 				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
+					file1 >> gainCurveDk[i];
 				}
 				break;
 		}
@@ -265,7 +267,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		} else {
 			//Get frequency and gain needed depending on haptic
 			freq = (haptic > 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
-			gain = (haptic > 2) ? gainCurveRb[note] : gainCruveTr[note];
+			gain = (haptic > 2) ? gainCurveRb[note] : gainCurveTr[note];
 			dataBlob[0] = 0x83;
 			dataBlob[1] = haptic;
 			dataBlob[2] = ((directVel) ? (velocity * 255) / 127 - 128 : gain) + gainModifier[haptic];
@@ -381,7 +383,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 		directVel = true;
     }
 	if (strstr(params.midiSong,"_dc")) {
-		std::cout << "THIS FILE MAY BE FOR A NEWER VERSION OF STEAM HAPTICS SINGER! Found \"_dv\" in file name, assuming direct velocity to gain control"
+		std::cout << "THIS FILE MAY BE FOR A NEWER VERSION OF STEAM HAPTICS SINGER! Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
 		directVel = true;
 	}
 
@@ -477,7 +479,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 
 bool parseArguments(int argc, char** argv, ParamsStruct* params){
 	int c;
-	while ( (c = getopt(argc, argv, "l:r:n:m:d:i:pvuts")) != -1) {
+	while ( (c = getopt(argc, argv, "l:r:n:m:d:i:pvutsA:")) != -1) {
 		int32_t value;
 		switch(c){
 		case 'l':
@@ -531,6 +533,20 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 		case 's':
 			tritonSwap = true;
 			break;
+		case 'A': {
+			std::string algoName(optarg);
+			if      (algoName == "pyin")     params->pitchAlgo = PitchAlgo::PYIN;
+			else if (algoName == "mpm")      params->pitchAlgo = PitchAlgo::MPM;
+			else if (algoName == "autocorr") params->pitchAlgo = PitchAlgo::AUTOCORR;
+			else if (algoName == "amdf")     params->pitchAlgo = PitchAlgo::AMDF;
+			else if (algoName == "hps")      params->pitchAlgo = PitchAlgo::HPS;
+			else if (algoName == "cepstrum") params->pitchAlgo = PitchAlgo::CEPSTRUM;
+			else if (algoName == "fftpeak")  params->pitchAlgo = PitchAlgo::FFT_PEAK;
+			else if (algoName == "cqt")      params->pitchAlgo = PitchAlgo::CQT;
+			else if (algoName == "stft")     params->pitchAlgo = PitchAlgo::STFT;
+			else                             params->pitchAlgo = PitchAlgo::YIN;
+			break;
+		}
 		case '?':
 			return false;
 			break;
@@ -591,10 +607,31 @@ int main(int argc, char** argv)
 			  "\n  -u	No gain curve, all notes use (signed) 0x00 gain"
 			  "\n  -t	(Steam Controller 2026 Only) Limit to only two channels"
 			  "\n  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
-				"" << std::endl;
+			  "\n  -A ALGO\tPitch detection algorithm for MP3 conversion. Default: yin"
+			  "\n         \tOptions: yin pyin mpm autocorr amdf hps cepstrum fftpeak cqt stft"
+			  "" << std::endl;
 		return 1;
 	}
 
+	std::string convertedMidPath;
+	{
+		std::string songPath(params.midiSong);
+		size_t len = songPath.size();
+		bool isMP3 = (len >= 4) &&
+		             (songPath.substr(len - 4) == ".mp3" ||
+		              songPath.substr(len - 4) == ".MP3");
+		if (isMP3) {
+			convertedMidPath = songPath.substr(0, len - 4) + ".mid";
+			std::cout << "MP3 input detected - converting to MIDI..." << std::endl;
+			PitchConfig pitchCfg;
+			pitchCfg.algo = params.pitchAlgo;
+			if (!Mp3ToMidi_Convert(songPath, convertedMidPath, pitchCfg)) {
+				std::cerr << "MP3 conversion failed." << std::endl;
+				return 1;
+			}
+			params.midiSong = convertedMidPath.c_str();
+		}
+	}
 
 	//Initializing LIBUSB
 	int r = libusb_init(NULL);
