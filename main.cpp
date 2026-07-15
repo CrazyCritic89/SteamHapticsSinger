@@ -3,7 +3,9 @@
 #include <chrono>
 #include <cstring>
 
+#if __has_include(<stdint-gcc.h>)
 #include <stdint-gcc.h>
+#endif
 #include <unistd.h>
 #include <stdint.h>
 
@@ -363,7 +365,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 	MidiFile_t midifile;
 
 	//Open Midi File
-	midifile = MidiFile_load(params.midiSong);
+	midifile = MidiFile_load((char*)params.midiSong);
 
 	if(midifile == NULL){
 		std::cout << "Unable to open MIDI file!" << params.midiSong << std::endl;
