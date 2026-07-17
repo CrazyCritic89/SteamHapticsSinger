@@ -57,7 +57,9 @@
 
 This project aims to be a continuation of SteamControllerSinger (forked from [Roboron3042's fork](https://github.com/Roboron3042/SteamControllerSinger), originally by [Pila](https://gitlab.com/Pilatomic/SteamControllerSinger)) by fixing issues, adding features, and, most notably, Steam Deck and Steam Controller (2026) support.
 
-I have made a small [Discord server](https://discord.gg/TWpvAxX5GW) for sharing MIDI files and updates easier for anyone interested.
+I have made a small [Discord server](https://discord.gg/hhNNAGfcrA) for sharing MIDI files and updates easier for anyone interested.
+
+**NOTE ABOUT THE DISCORD**: it appears permanent links are not working at the moment, so use this temp 30 day one instead for now: https://discord.gg/tBWzee7h9
 
 NOTE: For Steam Controller (2015), make sure the BLE firmware is NOT installed.
 
