@@ -234,7 +234,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		if (note == NOTE_STOP) {
 			dataBlob[0] = 0x8F;
 			dataBlob[2] = channel;
-			dataBlob[8] = 0x80;
+			//dataBlob[8] = 0x80;
 		} else {
 			//period = 1.0 / frequency;
 			periodCommand = STEAM_CONTROLLER_MAGIC_PERIOD_RATIO / frequency; //Reminder to check if the Steam Controller tuning lines up with the Deck.
@@ -463,11 +463,11 @@ void displayPlayedNotes(int channel, int note) {
 	static bool savedPos = false;
 	if (!savedPos) {
 		//Save position
-    	std::cout << "\0337";
+    	std::cout << "\033[s";
 		savedPos = true;
 	} else {
 		//Go back up
-    	std::cout << "\0338";
+    	std::cout << "\033[u";
 	}
 
 	std::cout << "\033[?25l" << std::flush;
