@@ -6,7 +6,7 @@
 
 #include <cstring>
 #include <getopt.h>
-#include <signal.h>
+#include <csignal>
 #include <cstdlib>
 
 #include <hidapi.h>
@@ -28,7 +28,7 @@ COORD savedPosition = {-1,-1};
 
 #define DURATION_MAX			-1
 #define NOTE_STOP		   		-1
-#define PROGRESS_BAR_LENGTH     32
+#define PROGRESS_BAR_LENGTH     40
 
 #define DEFAULT_GAIN 0
 
@@ -72,8 +72,8 @@ struct ParamsStruct{
 bool directVel = false;
 bool tritonLimit = false;
 bool tritonSwap = false;
-bool exitFlag = false;
-int channelCount = 4;
+bool exitMute = false;
+int channelCount = 2;
 int gainModifier[5] = {0};
 bool noGainCurve = false;
 int consoleType = 0; //Specifies what to use, 0 is legacy playback display, 1 is ANSI, 2 is Win32 API
@@ -253,9 +253,9 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,controller->interfaceNum,dataBlob,64,1000);
 		if(r < 0) {
 			std::cout<<"\nCommand Error "<<libusb_error_name(r)<<std::endl;
-			exitFlag = false;
+			exitMute = false;
 			std::cin.ignore();
-			exit(1);
+			std::exit(EXIT_FAILURE);
 		}
 		break;
 
@@ -290,9 +290,9 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		r = hid_write(controller->hid_handle,dataBlob,64);
 		if(r < 0) {
 			wprintf(L"\nCommand Error %ls\n", hid_error(controller->hid_handle));
-			exitFlag = false;
+			exitMute = false;
 			std::cin.ignore();
-			exit(1);
+			std::exit(EXIT_FAILURE);
 		}
 		break;
 
@@ -319,9 +319,9 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		r = libusb_control_transfer(controller->dev_handle,0x21,9,0x0300,2,dataBlob,64,1000);
 		if(r < 0) {
 			std::cout<<"\nCommand Error "<<libusb_error_name(r)<<std::endl;
-			exitFlag = false;
+			exitMute = false;
 			std::cin.ignore();
-			exit(1);
+			std::exit(EXIT_FAILURE);
 		}
 		break;
 	
@@ -331,10 +331,8 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 }
 
 void SteamHaptics_StopNotes(SteamControllerInfos* controller) {
-	if (exitFlag) {
 	for (int i = 0 ; i < CHANNEL_COUNT ; i++) {
 		SteamHaptics_PlayNote(controller,i,NOTE_STOP,0,0);
-	}
 	}
 }
 
@@ -346,16 +344,23 @@ void SteamHaptics_StopNotes(SteamControllerInfos* controller) {
 	#include <termios.h>
 
 	struct termios orig_termios;
+	bool rawMode = false;
 
 	void disableRawMode() {
-		tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+		if (rawMode) {
+			tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+			rawMode = false;
+		}
 	}
 
 	void enableRawMode() {
-		tcgetattr(STDIN_FILENO, &orig_termios);
-		struct termios raw = orig_termios;
-		raw.c_lflag &= ~(ICANON | ECHO);
-		tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+		if (!rawMode) {
+			tcgetattr(STDIN_FILENO, &orig_termios);
+			struct termios raw = orig_termios;
+			raw.c_lflag &= ~(ICANON | ECHO);
+			tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+			rawMode = true;
+		}
 	}
 
 	bool isKeyInBuffer() {
@@ -451,16 +456,21 @@ void displayPlayedNotes(int channel, int note) {
 		}
 	}
 
+	
+
 	#ifdef __linux__
 
 	static bool savedPos = false;
 	if (!savedPos) {
 		//Save position
-    	std::cout << "\0337" << std::flush;
+    	std::cout << "\0337";
+		savedPos = true;
 	} else {
 		//Go back up
-    	std::cout << "\0338" << std::flush;
+    	std::cout << "\0338";
 	}
+
+	std::cout << "\033[?25l" << std::flush;
 
 	#elif defined(_WIN32)
 
@@ -490,7 +500,7 @@ void displayPlayedNotes(int channel, int note) {
     }
 }
 
-void displayProgressBar(int currentTick, int endTick, float tempo) {
+void displayProgressBar(int currentTick, int endTick, float tempo, bool playing) {
 	std::cout << "\nTempo: ";
 	if (tempo) {
 		std::cout << tempo;
@@ -510,7 +520,8 @@ void displayProgressBar(int currentTick, int endTick, float tempo) {
         }
     }
 
-	std::cout << "\n[Left/Right] Seek  [Space] Pause\n";
+	std::cout << "\n[Left/Right] Seek - [Space] ";
+	if (playing) std::cout<<"Pause"; else std::cout<<"Play ";
 }
 
 void displayPlayedNotes_old(int channel, int8_t note){
@@ -581,25 +592,20 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 		directVel = true;
     }
 
-	if (strstr(params.midiSong,"_dv")) {
-        std::cout << "Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
-		directVel = true;
-    }
-
 	#ifdef __linux__
 	enableRawMode();
 	#endif
 
 	//Now try to stop notes on exit
-	exitFlag = true;
+	exitMute = true;
 
 	//Hide cursor
 	std::cout << "\033[?25l" << std::flush;
 
 	//Pre-start
-	std::cout << "Starting playback of " << params->midiInput  << "... press Enter anytime to stop\n\n";
+	std::cout << "Starting playback of " << params->midiInput  << "... press [Enter] anytime to stop\n\n";
 	displayPlayedNotes(-1,NOTE_STOP);
-	displayProgressBar(0,100,0);
+	displayProgressBar(0,100,0,true);
     displayPlayedNotes(-1,NOTE_STOP);
 	std::cout << "\n\n";
 	const char spinner[4] = {'|','/','-','\\'};
@@ -636,13 +642,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 		switch (key) {
 			case -1:
 			case 1:
-				currentTick += 10 * r.ticksPerBeat * key;
-				if (currentTick < 0) {
-					currentTick = 0;
-					displayPlayedNotes(-1,NOTE_STOP);
-					displayProgressBar(0,100,tempo);
-					//std::cout << "hi" << std::endl;
-				}
+				currentTick += (endTick / PROGRESS_BAR_LENGTH + 1) * key;
+				//currentTick += 10 * r.ticksPerBeat * key;
+				if (currentTick < 0) currentTick = 0;
 				else if (currentTick >= endTick) {
 					currentTick = endTick-r.ticksPerBeat;
 				}
@@ -653,11 +655,14 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 				stuckTick = currentTick;
 				SteamHaptics_StopNotes(controller);
 				displayPlayedNotes(-1,NOTE_STOP);
-				displayProgressBar(currentTick,endTick,tempo);
+				displayProgressBar(currentTick,endTick,tempo,playing);
 				break;
 			case 2:
 				playing = !playing;
 				stuckTick = currentTick;
+				displayPlayedNotes(-2,NOTE_STOP);
+				displayProgressBar(currentTick,endTick,tempo,playing);
+				std::cout<<std::flush;
 				break;
 			case 3:
 				currentTick = endTick+1;
@@ -738,7 +743,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 						if (currentTick - r.ticksPerBeat < event.tick) {
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
 						displayPlayedNotes(channel,note);
-						displayProgressBar(currentTick,endTick,tempo);
+						displayProgressBar(currentTick,endTick,tempo,playing);
 						}
 
 					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
@@ -783,13 +788,15 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 	SteamHaptics_StopNotes(controller);
 	
 	//if (channelCount - 2) std::cout << "\n\n"; 
-	std::cout << "\nPlayback completed, press any key to exit";
+	std::cout << "\nPlayback completed, press any key to exit\n";
 
 	return;
 }
 
 void playRealTime(SteamControllerInfos* controller, const ParamsStruct* params) {
-	std::cout << "Starting real-time MIDI... press Ctrl+C anytime to stop\n";
+	std::cout << "Starting real-time MIDI... press [Ctrl+C] anytime to stop\n";
+
+	//enableRawMode();
 	
 	auto my_callback = [&](const libremidi::message& message) {
 		static int noteOnChannel[CHANNEL_COUNT][3] = {{NOTE_STOP,0,-1}};
@@ -842,6 +849,12 @@ void playRealTime(SteamControllerInfos* controller, const ParamsStruct* params) 
 	};
 
 	libremidi::observer obs;
+	// if (!params->midiInput[0]) {
+	// 	if (libremidi::input_port port = libremidi::midi1::in_default_port()) {
+			
+	// 	}
+	// }
+
 	for(const libremidi::input_port& port : obs.get_input_ports()) {
 		
 		#ifdef __linux__
@@ -857,20 +870,24 @@ void playRealTime(SteamControllerInfos* controller, const ParamsStruct* params) 
 	if (!midi.is_port_open()) {
 		std::cout << "MIDI port failure! ";
 		if (params->midiInput[0]) {
-			std::cout << "Unable to open " << params->midiInput << "\n";
+			std::cout << "Unable to open \"" << params->midiInput << "\"." << std::endl;
 		}
-		#ifdef _WIN32 
+		#ifdef __linux__
 		else {
-			std::cout << "Attempted to open loopMIDI Port but failed. Unless you're using a different MIDI device, please install loopMIDI to use real-time.\n";
+			std::cout << "None specified." << std::endl;
+		}
+		#elif defined(_WIN32) 
+		else {
+			std::cout << "Attempted to open \"loopMIDI Port\" but failed. Unless you're using a different MIDI device, please launch or install loopMIDI to use real-time." << std::endl;
 		}
 		#endif
-		exitFlag = false;
-		//std::cin.ignore();
-		std::exit(1);
+		exitMute = false;
+		std::cin.ignore();
+		return;
 	}
 		
 
-	//if(auto port = )
+
 	while(true) {
 		std::this_thread::sleep_for(std::chrono::microseconds(params->intervalUSec));
 	}
@@ -953,30 +970,25 @@ bool parseArguments(int argc, char** argv, ParamsStruct* params){
 }
 
 void abortSignal(int) {
-	std::cout << "\nAborted";
+	std::cout << "\nAborted\n";
 	std::cout.flush();
-	exit(1);
+	std::exit(EXIT_FAILURE);
 }
 
 void doExit(){
-	//std::cout << "\033[?25h" << std::flush;
+	std::cout << "\033[?25h" << std::flush;
 
-	if(exitFlag) {
-		SteamHaptics_StopNotes(&steamController1);
-	}
-
+	if (exitMute) SteamHaptics_StopNotes(&steamController1);
 	SteamController_Close(&steamController1);
 
 	#ifdef __linux__
 	disableRawMode();
 	#endif
 
-	//std::cout << std::flush;
+	std::cout << std::flush;
 
 	libusb_exit(NULL);
 	hid_exit();
-
-	//std::cin.ignore();
 }
 
 int main(int argc, char** argv)
@@ -1013,15 +1025,21 @@ int main(int argc, char** argv)
 			  "\n  -u	No gain curve, all notes use (signed) 0x00 gain"
 			  "\n  -t	(Steam Controller 2026 Only) Limit to only two channels"
 			  "\n  -s	(Steam Controller 2026 Only) Swap rumble and trackpad channels"
-			  "\n  -e	Real-time MIDI"
+			  #ifdef __linux__
+			  "\n  -e	Real-time MIDI, will create a virtual MIDI device for usage"
+			  #elif defined(_WIN32)
+			  "\n  -e	Real-time MIDI, will attempt to use loopMIDI by default"
+			  #endif
 			  "\n  -q	No re-tuned frequencies"
+			  "\n  -x	External real-time MIDI, will use the default MIDI-IN device"
+			  "\n  -w   List MIDI-IN devices"
 			  "\n";
 		return 1;
 		//-left=0 -right=0 -tleft -tright -interval -debug -repeat -directvel -nogain -limit -swap -realtime -noretune -
 	}
 
 	//std::cout << "\033[?25l\033[2J\033[H" << std::flush;
-	std::cout << "\033c\033[H" << std::flush;
+	std::cout << "\033c" << std::flush;
 	std::cout << "Steam Haptics Singer v1.13 by Crazy, based off of Steam Controller Singer by Pila\n";
 
 
@@ -1048,8 +1066,8 @@ int main(int argc, char** argv)
 	}
 
 	//Set mecanism to stop playing when closing process
-	signal(SIGINT, abortSignal);
-	atexit(doExit);
+	std::signal(SIGINT, abortSignal);
+	std::atexit(doExit);
 
 	//DWORD dwMode = 0;
 	//if (!GetConsoleMode(hConsole,&dwMode)) return 1;
@@ -1064,8 +1082,6 @@ int main(int argc, char** argv)
 			playSong(&steamController1,&params);
 		}while(params.repeatSong);
 	}
-
-	std::cout << "\033[?25h" << std::flush;
 
 	return 0;
 }
