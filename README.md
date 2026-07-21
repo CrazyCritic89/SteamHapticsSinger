@@ -80,6 +80,11 @@ NOTE: For Steam Controller (2015), make sure the BLE firmware is NOT installed.
 2. Type in "cmd"
 3. Type `steam-haptics-singer.exe [name of your midi file]` to run
 4. Enjoy!
+#### On macOS
+1. Grant your terminal app (e.g. Terminal, iTerm, or VS Code) **Input Monitoring** permission in System Settings → Privacy & Security → Input Monitoring, then restart that app. Without this, macOS blocks HID access and the controller won't be detected ("No device found")
+2. Open a terminal in the folder
+3. Type `./steam-haptics-singer [name of your midi file]` to run
+4. Enjoy!
 
 ### Where can I find midi songs?
 
@@ -109,9 +114,11 @@ MIDI files may need to be edited with a software such as [MidiEditor](https://ww
 
 ## Compiling
 
-You will need libusb(-dev), hidapi-hidraw, and pkgconf. If you have them, just type `make`.
+You will need libusb, hidapi, and pkgconf. If you have them, just type `make`. The Makefile automatically picks the correct hidapi package name for your platform.
 
-For Windows, it can be built with MSYS2 though you will need to change "hidapi-hidraw" to just "hidapi" in the Makefile.
+* **Linux:** install libusb(-dev), hidapi-hidraw, and pkgconf from your distro, then `make`.
+* **macOS:** `brew install libusb hidapi pkgconf`, then `make`.
+* **Windows:** build with MSYS2, then `make`.
 
 ### For a guide:
 	git clone -b master https://github.com/CrazyCritic89/SteamHapticsSinger.git

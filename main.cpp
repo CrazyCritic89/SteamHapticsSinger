@@ -3,7 +3,9 @@
 #include <chrono>
 #include <cstring>
 
+#if __has_include(<stdint-gcc.h>)
 #include <stdint-gcc.h>
+#endif
 #include <unistd.h>
 #include <stdint.h>
 
@@ -148,7 +150,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 					break;
 				}
 				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
+					file1 >> gainCurveTr[i];
 					file2 >> gainCurveRb[i];
 				}
 				break;
@@ -159,7 +161,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 					break;
 				}
 				for (int i = 0; i < 128; ++i) {
-					file1 >> gainCurve[i];
+					file1 >> gainCurveDk[i];
 				}
 				break;
 		}
@@ -265,7 +267,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 		} else {
 			//Get frequency and gain needed depending on haptic
 			freq = (haptic > 2) ? midiFrequencyRb[note] : midiFrequencyTr[note];
-			gain = (haptic > 2) ? gainCurveRb[note] : gainCruveTr[note];
+			gain = (haptic > 2) ? gainCurveRb[note] : gainCurveTr[note];
 			dataBlob[0] = 0x83;
 			dataBlob[1] = haptic;
 			dataBlob[2] = ((directVel) ? (velocity * 255) / 127 - 128 : gain) + gainModifier[haptic];
@@ -363,7 +365,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 	MidiFile_t midifile;
 
 	//Open Midi File
-	midifile = MidiFile_load(params.midiSong);
+	midifile = MidiFile_load((char*)params.midiSong);
 
 	if(midifile == NULL){
 		std::cout << "Unable to open MIDI file!" << params.midiSong << std::endl;
@@ -381,7 +383,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct params){
 		directVel = true;
     }
 	if (strstr(params.midiSong,"_dc")) {
-		std::cout << "THIS FILE MAY BE FOR A NEWER VERSION OF STEAM HAPTICS SINGER! Found \"_dv\" in file name, assuming direct velocity to gain control"
+		std::cout << "THIS FILE MAY BE FOR A NEWER VERSION OF STEAM HAPTICS SINGER! Found \"_dv\" in file name, assuming direct velocity to gain control" << std::endl;
 		directVel = true;
 	}
 
