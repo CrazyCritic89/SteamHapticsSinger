@@ -447,17 +447,6 @@ void displayPlayedNotes(int channel, int note) {
                                                  "Right Trackpad : "};
 	const char* noteBaseNameArray[12] = {"C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"};
 
-    if (channel >= 0 && channel < channelCount) {
-        notePerChannel[channel ^ 1 ^ (tritonSwap * 2)] = note;
-    }
-	else if (channel == -1) {
-		for (int i = 0; i < channelCount; ++i) {
-			notePerChannel[i] = NOTE_STOP;
-		}
-	}
-
-	
-
 	#ifdef __linux__
 
 	static bool savedPos = false;
@@ -485,6 +474,20 @@ void displayPlayedNotes(int channel, int note) {
 
 	#endif
 
+	if (channel >= 0 && channel < channelCount) {
+        notePerChannel[channel ^ 1 ^ (tritonSwap * 2)] = note;
+    }
+	else if (channel == -1) {
+		for (int i = 0; i < channelCount; ++i) {
+			notePerChannel[i] = NOTE_STOP;
+		}
+	}
+	else if (channel == -2) {
+		std::cout << "\n\n";
+		if (channelCount > 2) std::cout << "\n\n";
+		return;
+	}
+
     for (int i = 0; i < channelCount; ++i) {
         std::cout << textPerChannel[(i + channelCount) & 3];
         //Write OFF
@@ -507,7 +510,7 @@ void displayProgressBar(int currentTick, int endTick, float tempo, bool playing)
 	}
 	std::cout << "\n";
 
-    const int pos = PROGRESS_BAR_LENGTH * currentTick / (endTick + 1);
+    const int pos = (currentTick >= endTick) ? PROGRESS_BAR_LENGTH-1 : PROGRESS_BAR_LENGTH * currentTick / endTick;
     for (int i = 0; i < PROGRESS_BAR_LENGTH; ++i) {
         if (i < pos) {
             std::cout << "=";
@@ -633,6 +636,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 	std::chrono::steady_clock::time_point tOrigin = std::chrono::steady_clock::now();
 	std::vector<size_t> trackIndex(r.tracks.size(),0);
 	const libremidi::track_event* eventOnChannel[CHANNEL_COUNT] = {nullptr};
+	const int progress_bar_step = endTick / PROGRESS_BAR_LENGTH;
 
 	while (currentTick <= endTick) {
 		std::this_thread::sleep_for(std::chrono::microseconds(params->intervalUSec));
@@ -642,11 +646,11 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 		switch (key) {
 			case -1:
 			case 1:
-				currentTick += (endTick / PROGRESS_BAR_LENGTH + 1) * key;
+				currentTick += progress_bar_step * key;
 				//currentTick += 10 * r.ticksPerBeat * key;
-				if (currentTick < 0) currentTick = 0;
+				if (currentTick < progress_bar_step) currentTick = 0;
 				else if (currentTick >= endTick) {
-					currentTick = endTick-r.ticksPerBeat;
+					currentTick = endTick-progress_bar_step;
 				}
 				for (int i = 0; i < CHANNEL_COUNT; ++i) {
 					eventOnChannel[i] = nullptr;
@@ -655,13 +659,13 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 				stuckTick = currentTick;
 				SteamHaptics_StopNotes(controller);
 				displayPlayedNotes(-1,NOTE_STOP);
-				displayProgressBar(currentTick,endTick,tempo,playing);
+				//displayProgressBar(currentTick,endTick,tempo,playing);
 				break;
 			case 2:
 				playing = !playing;
 				stuckTick = currentTick;
-				displayPlayedNotes(-2,NOTE_STOP);
-				displayProgressBar(currentTick,endTick,tempo,playing);
+				//displayPlayedNotes(-2,NOTE_STOP);
+				//displayProgressBar(currentTick,endTick,tempo,playing);
 				std::cout<<std::flush;
 				break;
 			case 3:
@@ -675,6 +679,9 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 			int tickAmount = std::chrono::duration_cast<std::chrono::nanoseconds>(tNow - tOrigin) / tickDuration;
 			currentTick += tickAmount;
 			tOrigin += tickDuration * tickAmount;
+			//This way is bad and should be improved to wait for every progress bar length measure
+			displayPlayedNotes(-2,NOTE_STOP);
+			displayProgressBar(currentTick,endTick,tempo,playing);
 		}
 
 		//Check if we went over, since we're done if we did
@@ -743,7 +750,7 @@ void playSong(SteamControllerInfos* controller,const ParamsStruct* params) {
 						if (currentTick - r.ticksPerBeat < event.tick) {
 						SteamHaptics_PlayNote(controller,channel,note,velocity,0);
 						displayPlayedNotes(channel,note);
-						displayProgressBar(currentTick,endTick,tempo,playing);
+						//displayProgressBar(currentTick,endTick,tempo,playing);
 						}
 
 					} else if (event.m.get_message_type() == libremidi::message_type::PITCH_BEND) {
@@ -986,6 +993,8 @@ void doExit(){
 	#endif
 
 	std::cout << std::flush;
+
+	//std::cin.ignore();
 
 	libusb_exit(NULL);
 	hid_exit();
