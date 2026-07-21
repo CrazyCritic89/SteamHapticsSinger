@@ -59,8 +59,6 @@ This project aims to be a continuation of SteamControllerSinger (forked from [Ro
 
 I have made a small [Discord server](https://discord.gg/hhNNAGfcrA) for sharing MIDI files and updates easier for anyone interested.
 
-**NOTE ABOUT THE DISCORD**: it appears permanent links are not working at the moment, so use this temp 30 day one instead for now: https://discord.gg/tBWzee7h9
-
 NOTE: For Steam Controller (2015), make sure the BLE firmware is NOT installed.
 
 [If you'd like to support what I do, you can find me on Kofi!](https://ko-fi.com/crazycritic89)
