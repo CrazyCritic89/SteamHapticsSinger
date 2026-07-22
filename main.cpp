@@ -56,7 +56,8 @@ const uint16_t midiFrequencyDk[128] = {440};
 const uint16_t midiFrequencyRb[128] = {0, 10, 10, 11, 11, 12, 13, 13, 14, 15, 16, 16, 17, 18, 19, 20, 22, 23, 24, 25, 27, 29, 30, 32, 34, 36, 38, 40, 42, 45, 47, 50, 53, 56, 59, 63, 66, 70, 75, 80, 84, 89, 94, 100, 107, 113, 120, 126, 134, 142, 151, 160, 169, 179, 189, 200, 213, 226, 239, 253, 267, 283, 300, 318, 336, 357, 377, 399, 423, 449, 477, 505, 535, 566, 598, 636, 674, 713, 756, 800, 848, 898, 951, 1008, 1068, 1131, 1199, 1270, 1345, 1425, 1510, 1600, 1693, 1792, 1897, 2008, 2125, 2249, 2381, 2521, 2669, 2826, 2992, 3168, 3354, 3552, 3761, 3983, 4218, 4467, 4731, 5010, 5306, 5620, 5952, 6304, 6677, 7072, 7491, 7934, 8404, 8902, 9429, 9988, 10580, 11207, 11872, 12576};
 const uint16_t midiFrequencyTr[128] = {0, 9, 9, 10, 10, 11, 12, 12, 13, 14, 15, 15, 16, 17, 18, 19, 21, 22, 23, 24, 26, 28, 29, 31, 33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 58, 62, 65, 69, 73, 78, 82, 87, 92, 98, 104, 110, 117, 123, 131, 139, 147, 156, 165, 175, 185, 196, 208, 220, 233, 247, 261, 276, 293, 310, 328, 349, 369, 391, 414, 439, 466, 493, 522, 552, 584, 621, 658, 696, 738, 781, 828, 877, 929, 985, 1043, 1105, 1171, 1240, 1314, 1392, 1475, 1562, 1655, 1754, 1858, 1969, 2085, 2209, 2340, 2480, 2627, 2784, 2949, 3124, 3311, 3507, 3716, 3938, 4173, 4422, 4686, 4965, 5261, 5575, 5907, 6259, 6632, 7027, 7446, 7889, 8359, 8857, 9384, 9943, 10535, 11162, 11827, 12531};
 
-const int8_t gainCurveDk[128] = {DEFAULT_GAIN};
+const int8_t gainCurveJp[128] = {DEFAULT_GAIN};
+const int8_t gainCurveGa[128] = {DEFAULT_GAIN};
 const int8_t gainCurveRb[128] = {DEFAULT_GAIN};
 const int8_t gainCurveTr[128] = {DEFAULT_GAIN};
 
@@ -83,7 +84,7 @@ enum class ControllerType {
 	Original,	//Steam Controller (2015)
 	Triton,		//Steam Controller (2026)
 	Jupiter, 	//Steam Deck (LCD)
-	Galileo 	//Steam Deck (OLED)
+	//Galileo 	//Steam Deck (OLED)
 };
 
 struct SteamControllerInfos{
@@ -91,6 +92,7 @@ struct SteamControllerInfos{
 	hid_device* hid_handle = NULL;
 	int interfaceNum = 0;
 	ControllerType type = ControllerType::None;
+	bool isOled = false;
 };
 
 SteamControllerInfos steamController1;
@@ -120,40 +122,57 @@ hid_device* open_steam_controller_hid(uint16_t pid) {
 	return handle;
 }
 
+bool Check_SteamDeckOLED() {
+	std::ifstream file("/sys/class/dmi/id/product_name");
+	char buffer[8];
+	if (!file) {
+		return false;
+	}
+	while(file.getline(buffer, sizeof(buffer))) {
+		if( strncmp(buffer,"Galileo",sizeof(buffer))==0 ) return true;
+	}
+	return false;
+}
+
 bool SteamController_Open(SteamControllerInfos* controller){
 	if(!controller) return false;
 
 	struct hid_device_info *devs, *cur_dev;
 	//Open Steam Controller device
 	if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, STEAM_CONTROLLER)) != NULL){ // A Steam Controller
-		std::cout<<"Found a Steam Controller"<<std::endl;
+		std::cout<<"Found a Steam Controller\n";
 		controller->interfaceNum = 2;
 		controller->type = ControllerType::Original;
 	}
 	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, STEAM_CONTROLLER_2015)) != NULL){ // Wired Steam Controller (2015)
-		std::cout<<"Found wired Steam Controller (2015)"<<std::endl;
+		std::cout<<"Found wired Steam Controller (2015)\n";
 		controller->interfaceNum = 2;
 		controller->type = ControllerType::Original;
 	}
 	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, STEAM_DONGLE)) != NULL){ // Steam Controller (2015) dongle //TODO: FIX
-		std::cout<<"Found Steam Dongle, will attempt to use the first Steam Controller (2015)"<<std::endl;
+		std::cout<<"Found Steam Dongle, will attempt to use the first Steam Controller (2015)\n";
 		controller->interfaceNum = 1;
 		controller->type = ControllerType::Original;
 	} 
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_CONTROLLER_2026)) != NULL) { // Steam Controller (2026)
-		std::cout<<"OK"<<std::endl;
+		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
 	}
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_PUCK)) != NULL) { // Steam Puck
-		std::cout<<"OK"<<std::endl;
+		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
 	}
 	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, STEAM_DECK)) != NULL){ // Steam Deck
-		std::cout<<"Found Steam Deck"<<std::endl;
+		std::cout<<"Found Steam Deck ";
 		controller->interfaceNum = 2;
 		controller->type = ControllerType::Jupiter;
+		if(Check_SteamDeckOLED()) {
+			std::cout<<"(OLED)\n";
+			controller->isOled = true;
+		}
+		else std::cout << "(LCD)\n";
 	}
 	else{
 		std::cout<<"No device found"<<std::endl;
@@ -309,7 +328,7 @@ int SteamHaptics_PlayNote(SteamControllerInfos* controller, int channel, int not
 			dataBlob[0] = 0xEA;
 			dataBlob[2] = !channel; //Swap haptics to match 2015
 			dataBlob[3] = 0x03; 
-			dataBlob[5] = ((directVel) ? (velocity * 255) / 127 - 128 : gainCurveDk[note]) + gainModifier[!channel];
+			dataBlob[5] = ((directVel) ? (velocity * 255) / 127 - 128 : gainCurveJp[note]) + gainModifier[!channel];
 			dataBlob[6] = freq % 0xFF;
 			dataBlob[7] = freq / 0xFF;
 			dataBlob[8] = 0xFF;
