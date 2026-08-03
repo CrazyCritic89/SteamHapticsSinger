@@ -9,5 +9,7 @@ else
 	endif
 endif
 
-steam-haptics-singer : main.cpp
-	g++ -o steam-haptics-singer main.cpp $(CFLAGS)
+SRCS = $(wildcard source/*.cpp)
+
+steam-haptics-singer : $(SRCS)
+	g++ -o steam-haptics-singer $(SRCS) $(CFLAGS)
