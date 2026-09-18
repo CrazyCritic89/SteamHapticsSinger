@@ -13,6 +13,7 @@ hid_device* open_steam_controller_hid(uint16_t pid) {
 	if (devs == NULL) return NULL;
 	if (pid == STEAM_CONTROLLER_2026) std::cout << "\rAttempting to find wired Steam Controller (2026)... ";
 	else if (pid == STEAM_PUCK) std::cout << "\rFound Steam Puck, attempting to find first Steam Controller (2026)... ";
+	else if (pid == STEAM_MACHINE) std::cout << "\rFound Steam Machine, attempting to find first Steam Controller (2026)... ";
 	else std::cout << "\rAttempting to find Valve device...";
 	hid_device* handle = NULL;
 	int r;
@@ -64,17 +65,17 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		controller->interfaceNum = 1;
 		controller->type = ControllerType::Original;
 	}
-	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, VALVE_KNUCKLES)) != NULL){ // Wired Valve Knuckles
-		std::cout<<"Found wired Valve Knuckles\n";
-		controller->interfaceNum = 2;
-		controller->type = ControllerType::Original;
-	}
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_CONTROLLER_2026)) != NULL) { // Steam Controller (2026)
 		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;
 		if (!controller->tritonLimit) controller->channelCount = 4;
 	}
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_PUCK)) != NULL) { // Steam Puck
+		std::cout<<"OK\n";
+		controller->type = ControllerType::Triton;
+		if (!controller->tritonLimit) controller->channelCount = 4;
+	}
+	else if((controller->hid_handle = open_steam_controller_hid(STEAM_MACHINE)) != NULL) { // Steam Machine
 		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;
 		if (!controller->tritonLimit) controller->channelCount = 4;
@@ -88,6 +89,11 @@ bool SteamController_Open(SteamControllerInfos* controller){
 			controller->isOled = true;
 		}
 		else std::cout << "(LCD)\n";
+	}
+	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, VALVE_KNUCKLES)) != NULL){ // Wired Valve Knuckles
+		std::cout<<"Found wired Valve Knuckles\n";
+		controller->interfaceNum = 2;
+		controller->type = ControllerType::Original;
 	}
 	else{
 		std::cout<<"No device found"<<std::endl;
