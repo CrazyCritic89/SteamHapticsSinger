@@ -63,7 +63,12 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		std::cout<<"Found Steam Dongle, will attempt to use the first Steam Controller (2015)\n";
 		controller->interfaceNum = 1;
 		controller->type = ControllerType::Original;
-	} 
+	}
+	else if((controller->dev_handle = libusb_open_device_with_vid_pid(NULL, VALVE_VID, VALVE_KNUCKLES)) != NULL){ // Wired Valve Knuckles
+		std::cout<<"Found wired Valve Knuckles\n";
+		controller->interfaceNum = 2;
+		controller->type = ControllerType::Original;
+	}
 	else if((controller->hid_handle = open_steam_controller_hid(STEAM_CONTROLLER_2026)) != NULL) { // Steam Controller (2026)
 		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;

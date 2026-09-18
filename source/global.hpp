@@ -13,14 +13,6 @@
 
 #define DEFAULT_GAIN 0
 
-#define VALVE_VID	 			0x28DE
-#define STEAM_CONTROLLER 		0x1101
-#define STEAM_CONTROLLER_2015 	0x1102
-#define STEAM_DONGLE 			0x1142
-#define STEAM_CONTROLLER_2026	0x1302
-#define STEAM_PUCK				0x1304
-#define STEAM_DECK				0x1205
-
 struct ParamsStruct{
 	const char* midiInput = "\0";
 	unsigned int intervalUSec = DEFAULT_INTERVAL_USEC;
