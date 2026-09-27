@@ -144,7 +144,7 @@ bool SteamController_Open(SteamControllerInfos* controller){
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
 	}
-	else if((controller->hid_handle = open_steam_controller_hid(STEAM_MACHINE) != NULL) { // Steam Machine Internal Reciever
+	else if((controller->hid_handle = open_steam_controller_hid(STEAM_MACHINE)) != NULL) { // Steam Machine Internal Reciever
 		std::cout<<"OK\n";
 		controller->type = ControllerType::Triton;
 		if (!tritonLimit) channelCount = 4;
